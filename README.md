@@ -9,7 +9,7 @@ presentation/
   Static GitHub Pages slide deck and speaker notes.
 
 demo/
-  Runnable MongoDB, Confluent Kafka, Debezium, Orders API, and Fulfillment consumer services.
+  Runnable MongoDB, Confluent Kafka, Debezium, Orders service, and Fulfillment service lab.
 ```
 
 ## Preview the GitHub Page
@@ -48,7 +48,7 @@ Prerequisite: Docker Desktop or another Docker engine with Docker Compose.
 Host ports are intentionally offset to avoid common local service conflicts:
 
 ```text
-orders-api: http://localhost:18080
+orders-service: http://localhost:18080
 debezium-connect: http://localhost:18083
 kafka: localhost:19092
 mongodb: localhost:27018
@@ -68,18 +68,18 @@ curl helper: curlimages/curl:8.20.0
 Service boundaries:
 
 ```text
-orders-api
+orders-service
   owns checkout.orders and checkout.outbox_events
   exposes POST /checkouts/{checkoutID}/complete
   writes business state and outbox event in one MongoDB transaction
 
-fulfillment-consumer
+fulfillment-service
   owns fulfillment.processed_events and fulfillment.fulfillments
   consumes orders.events.v1 with consumer group fulfillment-service
   records event ids before applying fulfillment side effects
 ```
 
-Start MongoDB, Confluent Kafka, Debezium Connect, the connector registration job, the Orders API microservice, and the Fulfillment consumer microservice:
+Start MongoDB, Confluent Kafka, Debezium Connect, the connector registration job, `orders-service`, and `fulfillment-service`:
 
 ```sh
 cd demo
@@ -94,27 +94,27 @@ Check the Debezium connector:
 sh scripts/watch-connect.sh
 ```
 
-Produce an order completion event through `orders-api`:
+Produce an order completion event through `orders-service`:
 
 ```sh
 sh scripts/create-checkout.sh checkout-1001
 ```
 
-The Orders API writes `checkout.orders` and `checkout.outbox_events` in the same MongoDB transaction. Debezium captures the committed `outbox_events` document and publishes to:
+The Orders service writes `checkout.orders` and `checkout.outbox_events` in the same MongoDB transaction. Debezium captures the committed `outbox_events` document and publishes to:
 
 ```text
 orders.events.v1
 ```
 
-## Fulfillment Consumer
+## Fulfillment Service
 
-`fulfillment-consumer` is the downstream microservice in the lab. It demonstrates the consumer-side inbox pattern that still matters after Debezium publishes the outbox event.
+`fulfillment-service` is the downstream microservice in the lab. It demonstrates the consumer-side inbox pattern that still matters after Debezium publishes the outbox event.
 
 Flow:
 
 ```text
 Kafka topic orders.events.v1
-  -> fulfillment-consumer
+  -> fulfillment-service
   -> fulfillment.processed_events
   -> fulfillment.fulfillments
 ```
@@ -141,10 +141,10 @@ Inspect MongoDB state for both microservices. This prints `checkout.orders`, `ch
 sh scripts/watch-mongo.sh
 ```
 
-Watch the Fulfillment consumer process. It records processed event IDs in `fulfillment.processed_events` and writes fulfillment side effects in `fulfillment.fulfillments`:
+Watch the Fulfillment service process. It records processed event IDs in `fulfillment.processed_events` and writes fulfillment side effects in `fulfillment.fulfillments`:
 
 ```sh
-docker compose logs -f fulfillment-consumer
+docker compose logs -f fulfillment-service
 ```
 
 List Kafka topics:

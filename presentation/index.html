@@ -314,7 +314,7 @@ sh scripts/watch-mongo.sh</code></pre>
           </article>
           <article>
             <span class="badge">5</span>
-            <h3>Fulfillment consumer</h3>
+            <h3>Fulfillment service</h3>
             <p>Records the event id, then writes the fulfillment side effect.</p>
           </article>
         </div>
@@ -325,15 +325,15 @@ sh scripts/watch-mongo.sh</code></pre>
           <p class="eyebrow">6. Demo storyboard</p>
           <h2>Run one checkout through MongoDB, Debezium, Kafka, and Go.</h2>
           <p>
-            The lab runs two Go microservices: <code>orders-api</code> owns the checkout write and outbox,
-            while <code>fulfillment-consumer</code> owns its inbox, dedupe store, and fulfillment records.
+            The lab runs two Go microservices: <code>orders-service</code> owns the checkout write and outbox,
+            while <code>fulfillment-service</code> owns its inbox, dedupe store, and fulfillment records.
           </p>
         </div>
         <div class="demo-board">
           <article>
             <span>01</span>
             <h3>Send command</h3>
-            <p><code>POST /checkouts/{id}/complete</code> enters <code>orders-api</code>.</p>
+            <p><code>POST /checkouts/{id}/complete</code> enters <code>orders-service</code>.</p>
           </article>
           <article>
             <span>02</span>
@@ -353,7 +353,7 @@ sh scripts/watch-mongo.sh</code></pre>
           <article>
             <span>05</span>
             <h3>Fulfillment handles once</h3>
-            <p><code>fulfillment-consumer</code> records the processed event id before writing side effects.</p>
+            <p><code>fulfillment-service</code> records the processed event id before writing side effects.</p>
           </article>
         </div>
       </section>
@@ -420,9 +420,9 @@ sh scripts/watch-mongo.sh</code></pre>
               Debezium Connect, and a MongoDB outbox connector.
             </p>
             <ul class="check-list">
-              <li><code>orders-api</code> writes <code>orders</code> and <code>outbox_events</code> in one MongoDB transaction.</li>
+              <li><code>orders-service</code> writes <code>orders</code> and <code>outbox_events</code> in one MongoDB transaction.</li>
               <li>Debezium transforms outbox documents into <code>orders.events.v1</code>.</li>
-              <li><code>fulfillment-consumer</code> records <code>processed_events</code> and upserts <code>fulfillments</code>.</li>
+              <li><code>fulfillment-service</code> records <code>processed_events</code> and upserts <code>fulfillments</code>.</li>
             </ul>
           </div>
           <div class="code-block">
@@ -432,10 +432,10 @@ sh scripts/watch-connect.sh
 sh scripts/create-checkout.sh checkout-1001
 sh scripts/watch-kafka.sh
 sh scripts/watch-mongo.sh
-docker compose logs -f fulfillment-consumer
+docker compose logs -f fulfillment-service
 
 # lab settings
-orders-api: http://localhost:18080
+orders-service: http://localhost:18080
 connect: http://localhost:18083
 kafka: localhost:19092
 mongodb: localhost:27018

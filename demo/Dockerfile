@@ -6,8 +6,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/orders-api ./cmd/orders-api
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/fulfillment-consumer ./cmd/fulfillment-consumer
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/orders-service ./cmd/orders-service
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/fulfillment-service ./cmd/fulfillment-service
 
 FROM alpine:3.23.4
 
@@ -15,8 +15,8 @@ RUN addgroup -S app && adduser -S -G app app
 
 USER app
 
-COPY --from=build /out/orders-api /usr/local/bin/orders-api
-COPY --from=build /out/fulfillment-consumer /usr/local/bin/fulfillment-consumer
+COPY --from=build /out/orders-service /usr/local/bin/orders-service
+COPY --from=build /out/fulfillment-service /usr/local/bin/fulfillment-service
 
 EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/orders-api"]
+ENTRYPOINT ["/usr/local/bin/orders-service"]

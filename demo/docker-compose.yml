@@ -79,7 +79,7 @@ services:
       http://connect:8083/connectors/mongodb-outbox/config;
       echo"
 
-  orders-api:
+  orders-service:
     build: .
     depends_on:
       mongo-setup:
@@ -91,9 +91,9 @@ services:
       MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0
       MONGODB_DATABASE: checkout
 
-  fulfillment-consumer:
+  fulfillment-service:
     build: .
-    entrypoint: ["/usr/local/bin/fulfillment-consumer"]
+    entrypoint: ["/usr/local/bin/fulfillment-service"]
     depends_on:
       broker:
         condition: service_healthy

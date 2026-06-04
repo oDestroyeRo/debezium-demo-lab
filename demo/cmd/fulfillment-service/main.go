@@ -50,7 +50,7 @@ func main() {
 	}, service)
 	defer consumer.Close()
 
-	log.Printf("fulfillment consumer waiting for topic %s", env.String("KAFKA_TOPIC", defaultTopic))
+	log.Printf("fulfillment service waiting for topic %s", env.String("KAFKA_TOPIC", defaultTopic))
 	if err := consumer.Run(ctx); err != nil {
 		log.Fatalf("run consumer: %v", err)
 	}
