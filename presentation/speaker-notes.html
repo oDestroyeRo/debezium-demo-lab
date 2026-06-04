@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Speaker notes for a 60-minute talk about solving the dual write problem with Debezium.">
+    <title>Speaker Notes - Solving the Dual Write Problem with Debezium</title>
+    <link rel="stylesheet" href="speaker-notes.css">
+  </head>
+  <body>
+    <div class="notes-shell">
+      <header class="notes-header">
+        <nav class="top-links" aria-label="Page links">
+          <a href="index.html">Open Slide Deck</a>
+          <a href="SPEAKER_NOTES.md">Markdown Source</a>
+          <a href="#demo-notes">Demo Notes</a>
+          <a href="#fallback-if-the-live-demo-fails">Fallback</a>
+        </nav>
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow">60-minute speaker runbook</p>
+            <h1>Speaker Notes</h1>
+            <p class="lead">Full talk track for <strong>Solving the Dual Write Problem with Debezium</strong>, including timing, slide-by-slide notes, live demo commands, expected outputs, Q&amp;A prompts, cleanup, and fallback flow.</p>
+          </div>
+          <aside class="slide-index" aria-label="Slide index">
+            <h2>Slide Index</h2>
+            <ol>
+<li><a href="index.html#intro">1. Intro</a></li>
+<li><a href="index.html#agenda">2. Agenda</a></li>
+<li><a href="index.html#sync-vs-async">3. Sync vs Async</a></li>
+<li><a href="index.html#dual-write">4. Dual Write</a></li>
+<li><a href="index.html#inconsistent-state">5. Inconsistent State</a></li>
+<li><a href="index.html#outbox-pattern">6. Outbox Pattern</a></li>
+<li><a href="index.html#outbox-flow">7. Outbox Flow</a></li>
+<li><a href="index.html#debezium">8. Debezium</a></li>
+<li><a href="index.html#cdc-pipeline">9. CDC Pipeline</a></li>
+<li><a href="index.html#demo">10. Demo</a></li>
+<li><a href="index.html#demo-event">11. Demo Event</a></li>
+<li><a href="index.html#demo-consumer">12. Consumer</a></li>
+<li><a href="index.html#run-lab">13. Run Lab</a></li>
+<li><a href="index.html#lessons-learned">14. Lessons Learned</a></li>
+            </ol>
+          </aside>
+        </div>
+      </header>
+      <div class="notes-layout">
+        <aside class="toc" aria-label="Speaker notes table of contents">
+          <h2>Contents</h2>
+          <ol>
+<li><a class="depth-2" href="#timing-plan">Timing Plan</a></li>
+<li><a class="depth-2" href="#preflight-before-the-talk">Preflight Before The Talk</a></li>
+<li><a class="depth-2" href="#opening-script">Opening Script</a></li>
+<li><a class="depth-2" href="#slide-notes">Slide Notes</a></li>
+<li><a class="depth-3" href="#1-intro-solving-the-dual-write-problem-with-debezium">1. Intro: Solving the Dual Write Problem with Debezium</a></li>
+<li><a class="depth-3" href="#2-agenda">2. Agenda</a></li>
+<li><a class="depth-3" href="#3-synchronous-vs-async">3. Synchronous vs Async</a></li>
+<li><a class="depth-3" href="#4-dual-write-problem">4. Dual Write Problem</a></li>
+<li><a class="depth-3" href="#5-why-database-plus-kafka-can-become-inconsistent">5. Why Database Plus Kafka Can Become Inconsistent</a></li>
+<li><a class="depth-3" href="#6-outbox-pattern">6. Outbox Pattern</a></li>
+<li><a class="depth-3" href="#7-outbox-flow">7. Outbox Flow</a></li>
+<li><a class="depth-3" href="#8-how-debezium-solves-it">8. How Debezium Solves It</a></li>
+<li><a class="depth-3" href="#9-cdc-pipeline">9. CDC Pipeline</a></li>
+<li><a class="depth-2" href="#demo-notes">Demo Notes</a></li>
+<li><a class="depth-3" href="#10-demo-storyboard">10. Demo Storyboard</a></li>
+<li><a class="depth-3" href="#start-the-lab">Start The Lab</a></li>
+<li><a class="depth-3" href="#check-debezium">Check Debezium</a></li>
+<li><a class="depth-3" href="#produce-one-checkout">Produce One Checkout</a></li>
+<li><a class="depth-3" href="#inspect-mongodb">Inspect MongoDB</a></li>
+<li><a class="depth-3" href="#inspect-kafka">Inspect Kafka</a></li>
+<li><a class="depth-3" href="#inspect-go-consumer">Inspect Go Consumer</a></li>
+<li><a class="depth-3" href="#produce-a-second-event">Produce A Second Event</a></li>
+<li><a class="depth-3" href="#optional-failure-explanation">Optional Failure Explanation</a></li>
+<li><a class="depth-2" href="#slide-notes-after-demo">Slide Notes After Demo</a></li>
+<li><a class="depth-3" href="#11-demo-event-shape">11. Demo Event Shape</a></li>
+<li><a class="depth-3" href="#12-consumer-responsibility">12. Consumer Responsibility</a></li>
+<li><a class="depth-3" href="#13-run-lab">13. Run Lab</a></li>
+<li><a class="depth-3" href="#14-lessons-learned">14. Lessons Learned</a></li>
+<li><a class="depth-2" href="#qanda-prompts">Q&amp;A Prompts</a></li>
+<li><a class="depth-2" href="#common-questions-and-answers">Common Questions And Answers</a></li>
+<li><a class="depth-3" href="#does-debezium-remove-the-need-for-kafka-producers-in-services">Does Debezium remove the need for Kafka producers in services?</a></li>
+<li><a class="depth-3" href="#why-not-publish-directly-to-kafka-first-then-write-mongodb">Why not publish directly to Kafka first, then write MongoDB?</a></li>
+<li><a class="depth-3" href="#why-not-write-mongodb-first-then-publish-kafka-with-retry">Why not write MongoDB first, then publish Kafka with retry?</a></li>
+<li><a class="depth-3" href="#is-this-exactly-once">Is this exactly-once?</a></li>
+<li><a class="depth-3" href="#why-an-outbox-collection-instead-of-raw-collection-cdc">Why an outbox collection instead of raw collection CDC?</a></li>
+<li><a class="depth-3" href="#what-should-be-monitored">What should be monitored?</a></li>
+<li><a class="depth-2" href="#demo-cleanup">Demo Cleanup</a></li>
+<li><a class="depth-2" href="#fallback-if-the-live-demo-fails">Fallback If The Live Demo Fails</a></li>
+          </ol>
+        </aside>
+        <main class="notes-content">
+<h1 id="speaker-notes-solving-the-dual-write-problem-with-debezium">Speaker Notes: Solving the Dual Write Problem with Debezium</h1>
+<p>Target length: 60 minutes, including live demo.</p>
+<p>Audience: backend engineers who know service APIs, databases, and Kafka basics.</p>
+<p>Primary goal: show why direct database plus Kafka writes are unsafe, then prove how MongoDB outbox plus Debezium makes event publication durable and observable.</p>
+<h2 id="timing-plan">Timing Plan</h2>
+<table>
+<thead><tr><th>Time</th><th>Section</th><th>Slides</th><th>Goal</th></tr></thead>
+<tbody>
+<tr><td>00:00-05:00</td><td>Setup and goal</td><td>Intro, Agenda</td><td>Frame the problem and expected takeaways.</td></tr>
+<tr><td>05:00-12:00</td><td>Communication modes</td><td>Sync vs Async</td><td>Compare request coupling with event-based workflows.</td></tr>
+<tr><td>12:00-24:00</td><td>Failure model</td><td>Dual Write, Inconsistent State</td><td>Make the dual write failure concrete.</td></tr>
+<tr><td>24:00-34:00</td><td>Pattern</td><td>Outbox Pattern, Outbox Flow</td><td>Show the single commit boundary.</td></tr>
+<tr><td>34:00-44:00</td><td>Debezium</td><td>Debezium, CDC Pipeline</td><td>Explain CDC relay behavior and limits.</td></tr>
+<tr><td>44:00-56:00</td><td>Live demo</td><td>Demo, Demo Event, Consumer, Run Lab</td><td>Run the lab and inspect API, MongoDB, Kafka, Debezium, consumer.</td></tr>
+<tr><td>56:00-60:00</td><td>Wrap</td><td>Lessons Learned</td><td>Summarize decisions, risks, and operational checklist.</td></tr>
+</tbody>
+</table>
+<p>Keep 3-5 minutes free for Docker startup delays or questions.</p>
+<h2 id="preflight-before-the-talk">Preflight Before The Talk</h2>
+<p>Run this before presenting:</p>
+<pre><code class="language-sh">cd demo
+docker compose down -v
+docker compose build
+docker compose config
+go test ./...</code></pre>
+<p>Check that these host ports are free or be ready to explain the offset ports:</p>
+<pre><code class="language-text">orders-api: http://localhost:18080
+debezium-connect: http://localhost:18083
+kafka: localhost:19092
+mongodb: localhost:27018</code></pre>
+<p>Open three terminal panes:</p>
+<pre><code class="language-sh"># pane 1: stack and logs
+cd demo
+docker compose up --build -d
+docker compose logs -f fulfillment-consumer</code></pre>
+<pre><code class="language-sh"># pane 2: commands during demo
+cd demo
+sh scripts/watch-connect.sh
+sh scripts/create-checkout.sh checkout-demo-001
+sh scripts/watch-mongo.sh</code></pre>
+<pre><code class="language-sh"># pane 3: Kafka inspection
+cd demo
+sh scripts/watch-kafka.sh</code></pre>
+<p>If network or image pulls are slow, use the storyboard slides and show the already committed files:</p>
+<pre><code class="language-sh">demo/docker-compose.yml
+demo/deploy/debezium/mongodb-outbox-connector.json
+demo/cmd/orders-api/main.go
+demo/cmd/fulfillment-consumer/main.go
+demo/internal/orders/
+demo/internal/fulfillment/</code></pre>
+<h2 id="opening-script">Opening Script</h2>
+<p>Say:</p>
+<p>Today we are solving one specific backend reliability problem: a service commits state to a database and also needs to notify other services through Kafka. The dangerous version is a dual write: write database, then publish Kafka, or publish Kafka, then write database. Those two systems do not share one transaction, so failure timing can split reality.</p>
+<p>The target stack today is Go services, MongoDB, Confluent Kafka, and Debezium. The key idea is not &quot;Kafka makes everything reliable&quot; and not &quot;Debezium gives business exactly-once.&quot; The key idea is: put the event intent in MongoDB with the business state, then let Debezium publish committed changes to Kafka.</p>
+<h2 id="slide-notes">Slide Notes</h2>
+<div class="heading-row"><h3 id="1-intro-solving-the-dual-write-problem-with-debezium">1. Intro: Solving the Dual Write Problem with Debezium</h3><a class="slide-link" href="index.html#intro">Open slide</a></div>
+<p>Time: 3 minutes.</p>
+<p>Say:</p>
+<p>This deck has two parts. First, the reasoning: why dual writes fail and how the outbox pattern changes the consistency boundary. Second, the lab: a Go API writes an order and an outbox event into MongoDB, Debezium captures the outbox document, Kafka receives the event, and a Go consumer processes it.</p>
+<p>Point at the flow:</p>
+<pre><code class="language-text">Go service -&gt; MongoDB -&gt; Debezium -&gt; Confluent Kafka -&gt; Go consumer</code></pre>
+<p>Emphasize:</p>
+<ul>
+<li>MongoDB is the source of truth for the business state and event intent.</li>
+<li>Debezium is the relay from committed database changes to Kafka.</li>
+<li>Kafka is the fan-out and replay surface.</li>
+<li>The consumer still needs idempotency.</li>
+</ul>
+<p>Transition:</p>
+<p>Before the fix makes sense, we need to agree on the communication tradeoff.</p>
+<div class="heading-row"><h3 id="2-agenda">2. Agenda</h3><a class="slide-link" href="index.html#agenda">Open slide</a></div>
+<p>Time: 2 minutes.</p>
+<p>Say:</p>
+<p>We will move from communication style, to the dual write failure, to the outbox pattern, then into Debezium and the runnable demo. The point is not to memorize Debezium configuration. The point is to identify where the transaction boundary should be.</p>
+<p>Keep this fast. Do not explain every section yet.</p>
+<p>Transition:</p>
+<p>Start with synchronous versus asynchronous communication.</p>
+<div class="heading-row"><h3 id="3-synchronous-vs-async">3. Synchronous vs Async</h3><a class="slide-link" href="index.html#sync-vs-async">Open slide</a></div>
+<p>Time: 7 minutes.</p>
+<p>Say:</p>
+<p>Synchronous communication is easy to reason about at first: service A calls service B and waits. It is good when the caller needs an immediate decision. But it couples latency and availability. If the callee is slow, the caller is slow. If the callee times out, the caller may not know whether the callee did the work.</p>
+<p>Async communication decouples the request path. Service A commits its own state and emits a fact. Service B reacts later. That helps scalability and resilience, but correctness does not disappear. It moves into delivery semantics, ordering, retries, deduplication, and monitoring.</p>
+<p>Example:</p>
+<pre><code class="language-text">Synchronous: checkout-api calls fulfillment-api directly.
+Asynchronous: checkout-api publishes order.completed, fulfillment consumes it.</code></pre>
+<p>Important contrast:</p>
+<ul>
+<li>Sync failure: timeout creates unknown remote state.</li>
+<li>Async failure: local commit succeeds but event delivery must be reliable.</li>
+</ul>
+<p>Transition:</p>
+<p>Async is useful, but the naive implementation creates a different failure: dual write.</p>
+<div class="heading-row"><h3 id="4-dual-write-problem">4. Dual Write Problem</h3><a class="slide-link" href="index.html#dual-write">Open slide</a></div>
+<p>Time: 6 minutes.</p>
+<p>Say:</p>
+<p>The dual write problem happens when one request tries to commit two independent systems. In our stack, that means the Go service writes MongoDB and publishes Kafka in separate operations. MongoDB and Kafka do not share a transaction. There is no atomic commit across both.</p>
+<p>Use the code on the slide:</p>
+<pre><code class="language-go">orderID := orders.Insert(ctx, cmd)
+return producer.Publish(ctx, Event{Type: &quot;order.completed&quot;})</code></pre>
+<p>Ask:</p>
+<p>What happens if the process crashes between those two lines?</p>
+<p>Answer:</p>
+<p>MongoDB says the order is completed. Kafka has no event. Consumers never learn about the completed order unless we run manual repair.</p>
+<p>Then ask:</p>
+<p>What happens if Kafka publish succeeds but the service times out before it sees the acknowledgement?</p>
+<p>Answer:</p>
+<p>Retry may publish a duplicate. Now the consumer must know how to dedupe.</p>
+<p>Transition:</p>
+<p>Let us categorize the inconsistent states.</p>
+<div class="heading-row"><h3 id="5-why-database-plus-kafka-can-become-inconsistent">5. Why Database Plus Kafka Can Become Inconsistent</h3><a class="slide-link" href="index.html#inconsistent-state">Open slide</a></div>
+<p>Time: 6 minutes.</p>
+<p>Say:</p>
+<p>There are four common failure windows.</p>
+<p>First, database commit succeeds and publish fails. The database is ahead of Kafka.</p>
+<p>Second, publish succeeds but the acknowledgement is lost. The service retries and duplicates the event.</p>
+<p>Third, publish succeeds but the database operation rolls back. Kafka announced a state that never existed.</p>
+<p>Fourth, manual recovery republishes incorrectly. This can skip headers, use the wrong key, reorder events, or emit a payload shape consumers do not expect.</p>
+<p>Key phrase:</p>
+<p>The bug is not just &quot;Kafka failed.&quot; The bug is &quot;two separate commits represent one business fact.&quot;</p>
+<p>Transition:</p>
+<p>The outbox pattern fixes the commit boundary.</p>
+<div class="heading-row"><h3 id="6-outbox-pattern">6. Outbox Pattern</h3><a class="slide-link" href="index.html#outbox-pattern">Open slide</a></div>
+<p>Time: 5 minutes.</p>
+<p>Say:</p>
+<p>The outbox pattern says: do not publish directly to Kafka inside the request transaction. Instead, write the business state and an outbox event record in the same database transaction.</p>
+<p>In this lab:</p>
+<pre><code class="language-text">checkout.orders
+checkout.outbox_events</code></pre>
+<p>The API writes both:</p>
+<pre><code class="language-text">orders: status = COMPLETED
+outbox_events: type = order.completed</code></pre>
+<p>Now if the request commits, both the order and event intent exist. If the request rolls back, neither exists.</p>
+<p>Important:</p>
+<p>The outbox does not publish by itself. It stores durable intent. A relay still has to move that intent to Kafka.</p>
+<p>Transition:</p>
+<p>Now we need a relay. That is where Debezium enters.</p>
+<div class="heading-row"><h3 id="7-outbox-flow">7. Outbox Flow</h3><a class="slide-link" href="index.html#outbox-flow">Open slide</a></div>
+<p>Time: 5 minutes.</p>
+<p>Say:</p>
+<p>The request flow changes:</p>
+<pre><code class="language-text">API request -&gt; Go service -&gt; MongoDB transaction -&gt; CDC relay -&gt; Kafka topic</code></pre>
+<p>The Go service owns validation and transaction intent. MongoDB owns the committed truth. Debezium owns observing committed outbox changes and publishing them to Kafka.</p>
+<p>This is the strongest sentence on the slide:</p>
+<p>Debezium does not replace the outbox write. Debezium observes the committed outbox document.</p>
+<p>Why that matters:</p>
+<p>If someone says &quot;we use Debezium, so we do not need outbox,&quot; ask what event contract consumers will receive. Raw database change events are table or collection changes. Outbox events are business facts.</p>
+<p>Transition:</p>
+<p>Now look at what Debezium actually does.</p>
+<div class="heading-row"><h3 id="8-how-debezium-solves-it">8. How Debezium Solves It</h3><a class="slide-link" href="index.html#debezium">Open slide</a></div>
+<p>Time: 5 minutes.</p>
+<p>Say:</p>
+<p>Debezium is a CDC engine. CDC means change data capture. It reads committed database changes and streams them into Kafka Connect. For MongoDB, it watches change streams from the replica set.</p>
+<p>In this lab, Debezium is configured to watch only:</p>
+<pre><code class="language-text">checkout.outbox_events</code></pre>
+<p>Then the MongoDB outbox event router transforms the outbox document into an application-level Kafka message.</p>
+<p>Point out the config shape:</p>
+<pre><code class="language-json">&quot;connector.class&quot;: &quot;io.debezium.connector.mongodb.MongoDbConnector&quot;,
+&quot;collection.include.list&quot;: &quot;checkout.outbox_events&quot;,
+&quot;transforms.outbox.type&quot;: &quot;io.debezium.connector.mongodb.transforms.outbox.MongoEventRouter&quot;</code></pre>
+<p>Emphasize:</p>
+<ul>
+<li>Connector offsets let Debezium resume after restart.</li>
+<li>Kafka Connect manages the connector process.</li>
+<li>Kafka holds the messages for consumers.</li>
+<li>Delivery is still at-least-once from the application point of view.</li>
+</ul>
+<p>Transition:</p>
+<p>The pipeline becomes easier to observe.</p>
+<div class="heading-row"><h3 id="9-cdc-pipeline">9. CDC Pipeline</h3><a class="slide-link" href="index.html#cdc-pipeline">Open slide</a></div>
+<p>Time: 5 minutes.</p>
+<p>Say:</p>
+<p>The pipeline has five responsibilities.</p>
+<p>The Go service writes one transaction. MongoDB commits one source of truth. Debezium captures the outbox change. Kafka receives the event. The consumer processes idempotently.</p>
+<p>Explain the boundary:</p>
+<p>Debezium improves the reliability between MongoDB and Kafka because it reads committed changes and tracks offsets. But the consumer side still sees a distributed system. Consumers must be safe during retry, rebalance, replay, and duplicate delivery.</p>
+<p>Practical checks:</p>
+<pre><code class="language-sh">cd demo
+sh scripts/watch-connect.sh
+sh scripts/watch-kafka.sh
+sh scripts/watch-mongo.sh
+docker compose logs -f fulfillment-consumer</code></pre>
+<p>Transition:</p>
+<p>Now we will run the exact flow.</p>
+<h2 id="demo-notes">Demo Notes</h2>
+<p>Target time: 12 minutes.</p>
+<p>Run commands in this section from the <code>demo/</code> directory.</p>
+<div class="heading-row"><h3 id="10-demo-storyboard">10. Demo Storyboard</h3><a class="slide-link" href="index.html#demo">Open slide</a></div>
+<p>Time: 2 minutes before commands.</p>
+<p>Say:</p>
+<p>The demo follows one checkout:</p>
+<ol>
+<li>Send <code>POST /checkouts/{id}/complete</code>.</li>
+<li>The Go API inserts one <code>orders</code> document and one <code>outbox_events</code> document in the same MongoDB transaction.</li>
+<li>Debezium captures the committed outbox event.</li>
+<li>Kafka receives the message on <code>marketplace.orders.events.v1</code>.</li>
+<li>The Fulfillment consumer stores the processed event id, then writes a fulfillment record.</li>
+</ol>
+<div class="heading-row"><h3 id="start-the-lab">Start The Lab</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
+<p>Run:</p>
+<pre><code class="language-sh">cd demo
+docker compose up --build -d</code></pre>
+<p>Say while it starts:</p>
+<p>This starts MongoDB as a single-node replica set because MongoDB change streams need replica-set behavior. It starts one Confluent Kafka broker in KRaft mode, Debezium Connect, a one-shot connector registration container, the Go API, and the Go consumer.</p>
+<p>Check:</p>
+<pre><code class="language-sh">docker compose ps</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">broker: healthy
+mongo: up
+connect: up
+orders-api: up
+fulfillment-consumer: up</code></pre>
+<p>If Connect is still starting, wait and say:</p>
+<p>Kafka and Connect are infrastructure pieces. They often take longer than the app. The important thing is that the connector reaches <code>RUNNING</code>.</p>
+<div class="heading-row"><h3 id="check-debezium">Check Debezium</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
+<p>Run:</p>
+<pre><code class="language-sh">sh scripts/watch-connect.sh</code></pre>
+<p>Expected shape:</p>
+<pre><code class="language-json">{
+  &quot;name&quot;: &quot;mongodb-outbox&quot;,
+  &quot;connector&quot;: { &quot;state&quot;: &quot;RUNNING&quot; },
+  &quot;tasks&quot;: [{ &quot;state&quot;: &quot;RUNNING&quot; }]
+}</code></pre>
+<p>Say:</p>
+<p>This proves Debezium Connect accepted the MongoDB outbox connector and its task is running.</p>
+<div class="heading-row"><h3 id="produce-one-checkout">Produce One Checkout</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
+<p>Run:</p>
+<pre><code class="language-sh">sh scripts/create-checkout.sh checkout-demo-001</code></pre>
+<p>Expected shape:</p>
+<pre><code class="language-json">{
+  &quot;checkout_id&quot;: &quot;checkout-demo-001&quot;,
+  &quot;order_id&quot;: &quot;...&quot;,
+  &quot;outbox_event_id&quot;: &quot;...&quot;,
+  &quot;topic&quot;: &quot;marketplace.orders.events.v1&quot;
+}</code></pre>
+<p>Say:</p>
+<p>The API response gives us both IDs. The order id is the aggregate id. The outbox event id is the stable event id used for dedupe.</p>
+<div class="heading-row"><h3 id="inspect-mongodb">Inspect MongoDB</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
+<p>Run:</p>
+<pre><code class="language-sh">sh scripts/watch-mongo.sh</code></pre>
+<p>Say:</p>
+<p>Look for Orders state first, then Fulfillment state after the consumer processes the event.</p>
+<p>Business state:</p>
+<pre><code class="language-text">orders.status = COMPLETED</code></pre>
+<p>Event intent:</p>
+<pre><code class="language-text">outbox_events.type = order.completed
+outbox_events.aggregateid = order id
+outbox_events.payload.event_id = outbox event id
+outbox_events.payload.event_version = 1</code></pre>
+<p>Fulfillment state:</p>
+<pre><code class="language-text">processed_events._id = outbox event id
+fulfillments.order_id = order id</code></pre>
+<p>Important:</p>
+<p>The Orders records exist because they committed together. Fulfillment records exist only after Kafka delivery and consumer processing.</p>
+<div class="heading-row"><h3 id="inspect-kafka">Inspect Kafka</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
+<p>Run:</p>
+<pre><code class="language-sh">sh scripts/watch-kafka.sh</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">headers include id:&lt;outbox_event_id&gt;, event_type:order.completed
+key is the order id
+value contains event_id, event_version, checkout_id, order_id, shop_id, total_amount</code></pre>
+<p>Say:</p>
+<p>Debezium converted the MongoDB outbox document into a Kafka event. The key supports per-order ordering. The event id supports dedupe. The topic name is business-facing, not a raw collection name.</p>
+<p>Stop the consumer after one or two messages with <code>Ctrl-C</code>.</p>
+<div class="heading-row"><h3 id="inspect-go-consumer">Inspect Go Consumer</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
+<p>Run:</p>
+<pre><code class="language-sh">docker compose logs -f fulfillment-consumer</code></pre>
+<p>Expected:</p>
+<pre><code class="language-text">fulfillment started event_id=... order_id=... topic=marketplace.orders.events.v1 offset=...</code></pre>
+<p>Say:</p>
+<p>This is now a real microservice boundary. Orders owns <code>checkout.orders</code> and <code>checkout.outbox_events</code>. Fulfillment owns <code>fulfillment.processed_events</code> and <code>fulfillment.fulfillments</code>. The consumer persists the processed event id before applying its side effect.</p>
+<div class="heading-row"><h3 id="produce-a-second-event">Produce A Second Event</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
+<p>Run in another pane:</p>
+<pre><code class="language-sh">sh scripts/create-checkout.sh checkout-demo-002</code></pre>
+<p>Say:</p>
+<p>Watch the consumer log. The API did not publish to Kafka. It only wrote MongoDB. The event still appears because Debezium watches the outbox collection.</p>
+<div class="heading-row"><h3 id="optional-failure-explanation">Optional Failure Explanation</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
+<p>Do not break the live stack unless there is enough time.</p>
+<p>Say:</p>
+<p>If the API crashes after MongoDB commit, the outbox event is still stored. Debezium can publish after the API process is gone. If Debezium or Kafka is temporarily down, MongoDB still keeps the outbox event, and Debezium resumes from offsets when it recovers.</p>
+<p>What this does not solve:</p>
+<ul>
+<li>It does not make consumer side effects exactly-once.</li>
+<li>It does not remove the need for idempotency.</li>
+<li>It does not replace schema/version discipline.</li>
+<li>It does not remove monitoring needs.</li>
+</ul>
+<h2 id="slide-notes-after-demo">Slide Notes After Demo</h2>
+<div class="heading-row"><h3 id="11-demo-event-shape">11. Demo Event Shape</h3><a class="slide-link" href="index.html#demo-event">Open slide</a></div>
+<p>Time: 3 minutes.</p>
+<p>Say:</p>
+<p>The event shape is intentionally boring. Boring is good for event contracts.</p>
+<p>Call out:</p>
+<ul>
+<li><code>event_id</code>: unique event identity for dedupe.</li>
+<li><code>event_type</code>: business fact, here <code>order.completed</code>.</li>
+<li><code>aggregate_id</code>: the order id used as Kafka key.</li>
+<li><code>event_version</code>: version boundary for future evolution.</li>
+<li><code>occurred_at</code>: when the source event happened.</li>
+<li><code>payload</code>: domain data needed by consumers.</li>
+</ul>
+<p>Event body should not contain secrets or raw tokens. Kafka retention and consumer access make sensitive payloads expensive to clean up.</p>
+<div class="heading-row"><h3 id="12-consumer-responsibility">12. Consumer Responsibility</h3><a class="slide-link" href="index.html#demo-consumer">Open slide</a></div>
+<p>Time: 3 minutes.</p>
+<p>Say:</p>
+<p>Debezium and Kafka can deliver at least once. They cannot know whether your business side effect was safe to repeat. The consumer owns that.</p>
+<p>The production pattern is usually:</p>
+<pre><code class="language-text">begin local transaction
+insert processed_event(event_id)
+if duplicate, exit
+apply side effect
+commit local transaction</code></pre>
+<p>In this demo the Fulfillment service uses MongoDB collections for the inbox pattern: <code>processed_events</code> for idempotency and <code>fulfillments</code> for the side effect.</p>
+<div class="heading-row"><h3 id="13-run-lab">13. Run Lab</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
+<p>Time: 2 minutes if already demoed, 8 minutes if not.</p>
+<p>Say:</p>
+<p>This slide is the operator runbook. If someone wants to repeat the demo, these are the commands.</p>
+<p>Point out:</p>
+<ul>
+<li><code>watch-connect.sh</code> monitors Debezium connector state.</li>
+<li><code>watch-kafka.sh</code> monitors messages.</li>
+<li><code>watch-mongo.sh</code> monitors Orders and Fulfillment database state.</li>
+<li><code>docker compose logs -f fulfillment-consumer</code> monitors consumer behavior.</li>
+</ul>
+<div class="heading-row"><h3 id="14-lessons-learned">14. Lessons Learned</h3><a class="slide-link" href="index.html#lessons-learned">Open slide</a></div>
+<p>Time: 4 minutes.</p>
+<p>Say:</p>
+<p>The lesson is not &quot;always use Debezium.&quot; The lesson is to make the consistency boundary explicit.</p>
+<p>First, use one commit boundary. For a MongoDB-owned aggregate, write domain state and event intent together.</p>
+<p>Second, keep events boring. Stable id, clear type, aggregate key, version, and timestamp.</p>
+<p>Third, assume at-least-once delivery. Design consumers for replay and duplicates.</p>
+<p>Fourth, monitor the relay. Operators need connector status, lag, Kafka topic visibility, DLQ or quarantine policy, and schema drift checks.</p>
+<p>Close:</p>
+<p>The outbox pattern gives us durable intent. Debezium gives us a reliable relay from committed changes to Kafka. Kafka gives us fan-out and replay. Consumers still own idempotent business behavior.</p>
+<h2 id="qanda-prompts">Q&amp;A Prompts</h2>
+<p>Use these if discussion is quiet:</p>
+<ul>
+<li>Where would you put the outbox write in our current service layers?</li>
+<li>Which aggregate id should become the Kafka key?</li>
+<li>Which consumers need ordering?</li>
+<li>What side effects are not safe to repeat?</li>
+<li>What should happen to poison messages?</li>
+<li>How long should Kafka retain these events?</li>
+<li>Which fields are safe to put in the event body?</li>
+<li>What monitoring would prove the pipeline is healthy?</li>
+</ul>
+<h2 id="common-questions-and-answers">Common Questions And Answers</h2>
+<h3 id="does-debezium-remove-the-need-for-kafka-producers-in-services">Does Debezium remove the need for Kafka producers in services?</h3>
+<p>For outbox-backed domain events, yes, the request handler should not directly publish to Kafka. It writes outbox records. Debezium publishes those records. Services may still use direct producers for non-transactional signals, but not for facts that must match a database commit.</p>
+<h3 id="why-not-publish-directly-to-kafka-first-then-write-mongodb">Why not publish directly to Kafka first, then write MongoDB?</h3>
+<p>Then Kafka can announce a fact that MongoDB never commits. Consumers would act on false state.</p>
+<h3 id="why-not-write-mongodb-first-then-publish-kafka-with-retry">Why not write MongoDB first, then publish Kafka with retry?</h3>
+<p>Retry helps availability, but it cannot close the crash window between database commit and publish. It also creates duplicate risk when acknowledgements are ambiguous.</p>
+<h3 id="is-this-exactly-once">Is this exactly-once?</h3>
+<p>No. It gives atomic persistence of state and event intent in MongoDB, then reliable CDC publication. Consumers must still handle at-least-once delivery.</p>
+<h3 id="why-an-outbox-collection-instead-of-raw-collection-cdc">Why an outbox collection instead of raw collection CDC?</h3>
+<p>Raw collection CDC describes database mutations. An outbox event describes a business fact. Consumers should depend on business contracts, not internal document shape.</p>
+<h3 id="what-should-be-monitored">What should be monitored?</h3>
+<p>Monitor Debezium connector status, connector task errors, source lag, Kafka topic production, consumer lag, DLQ or quarantine volume, and MongoDB outbox growth.</p>
+<h2 id="demo-cleanup">Demo Cleanup</h2>
+<p>Run after the session:</p>
+<pre><code class="language-sh">cd demo
+docker compose down -v</code></pre>
+<p>Say if asked:</p>
+<p><code>-v</code> removes demo data so the next run starts from a clean MongoDB and Kafka state.</p>
+<h2 id="fallback-if-the-live-demo-fails">Fallback If The Live Demo Fails</h2>
+<p>If Docker fails:</p>
+<ol>
+<li>Show <code>demo/docker-compose.yml</code>.</li>
+<li>Show <code>demo/deploy/debezium/mongodb-outbox-connector.json</code>.</li>
+<li>Show the order transaction in <code>demo/internal/orders/repository/mongo/repository.go</code>.</li>
+<li>Show the durable consumer idempotency path in <code>demo/internal/fulfillment/repository/mongo/repository.go</code>.</li>
+<li>Explain expected outputs from these commands:</li>
+</ol>
+<pre><code class="language-sh">cd demo
+sh scripts/watch-connect.sh
+sh scripts/create-checkout.sh checkout-demo-001
+sh scripts/watch-mongo.sh
+sh scripts/watch-kafka.sh
+docker compose logs -f fulfillment-consumer</code></pre>
+<p>Close with:</p>
+<p>The implementation details can vary, but the invariant must not: one business fact should have one durable commit boundary before it enters Kafka.</p>
+
+        </main>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,109 @@
+services:
+  broker:
+    image: confluentinc/cp-kafka:8.2.1
+    ports:
+      - "19092:9092"
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:29093
+      KAFKA_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://broker:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server broker:29092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  mongo:
+    image: mongo:8.3.2
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27018:27017"
+
+  mongo-setup:
+    image: mongo:8.3.2
+    depends_on:
+      - mongo
+    volumes:
+      - ./deploy/mongo/init-replica-set.js:/scripts/init-replica-set.js:ro
+    entrypoint: ["/bin/bash", "-c"]
+    command: >
+      "until mongosh --host mongo:27017 --quiet --eval 'db.adminCommand({ ping: 1 }).ok' >/dev/null 2>&1;
+      do sleep 1; done;
+      mongosh --host mongo:27017 --quiet /scripts/init-replica-set.js"
+
+  connect:
+    image: quay.io/debezium/connect:3.5.2
+    ports:
+      - "18083:8083"
+    depends_on:
+      broker:
+        condition: service_healthy
+      mongo-setup:
+        condition: service_completed_successfully
+    environment:
+      BOOTSTRAP_SERVERS: broker:29092
+      GROUP_ID: debezium-demo
+      CONFIG_STORAGE_TOPIC: _connect_configs
+      OFFSET_STORAGE_TOPIC: _connect_offsets
+      STATUS_STORAGE_TOPIC: _connect_status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+
+  connector-init:
+    image: curlimages/curl:8.20.0
+    depends_on:
+      connect:
+        condition: service_started
+    volumes:
+      - ./deploy/debezium/mongodb-outbox-connector.json:/connector.json:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "until curl -fsS http://connect:8083/connectors >/dev/null;
+      do sleep 2; done;
+      curl -fsS -X PUT -H 'Content-Type: application/json'
+      --data @/connector.json
+      http://connect:8083/connectors/mongodb-outbox/config;
+      echo"
+
+  orders-api:
+    build: .
+    depends_on:
+      mongo-setup:
+        condition: service_completed_successfully
+    ports:
+      - "18080:8080"
+    environment:
+      HTTP_ADDR: :8080
+      MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0
+      MONGODB_DATABASE: checkout
+
+  fulfillment-consumer:
+    build: .
+    entrypoint: ["/usr/local/bin/fulfillment-consumer"]
+    depends_on:
+      broker:
+        condition: service_healthy
+      connector-init:
+        condition: service_completed_successfully
+      mongo-setup:
+        condition: service_completed_successfully
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0
+      FULFILLMENT_DATABASE: fulfillment
+      KAFKA_BROKERS: broker:29092
+      KAFKA_TOPIC: marketplace.orders.events.v1
+      KAFKA_GROUP_ID: fulfillment-service

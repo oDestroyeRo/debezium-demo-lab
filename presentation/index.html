@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="A backend engineering slide deck and runnable lab for solving the dual write problem with Debezium, MongoDB, Confluent Kafka, and Go services."
+    >
+    <title>Solving the Dual Write Problem with Debezium</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="deck-topbar" aria-label="Presentation controls">
+      <a class="brand" href="#intro" aria-label="Go to first slide">
+        <span class="brand-mark" aria-hidden="true">D</span>
+        <span>Dual Write Lab</span>
+      </a>
+      <nav class="jump-nav" aria-label="Slide sections">
+        <a href="#sync-vs-async">Sync vs Async</a>
+        <a href="#dual-write">Dual Write</a>
+        <a href="#outbox-pattern">Outbox</a>
+        <a href="#debezium">Debezium</a>
+        <a href="#demo">Demo</a>
+        <a href="speaker-notes.html">Speaker Notes</a>
+      </nav>
+      <div class="deck-actions">
+        <a class="notes-action" href="speaker-notes.html" aria-label="Open speaker notes" title="Open speaker notes">Notes</a>
+        <button class="icon-button" type="button" data-action="prev" aria-label="Previous slide" title="Previous slide">
+          <span aria-hidden="true">&lt;</span>
+        </button>
+        <span class="slide-count" aria-live="polite">1 / 14</span>
+        <button class="icon-button" type="button" data-action="next" aria-label="Next slide" title="Next slide">
+          <span aria-hidden="true">&gt;</span>
+        </button>
+      </div>
+    </header>
+
+    <main id="deck" class="deck" tabindex="-1">
+      <section class="slide title-slide" id="intro" data-title="Intro">
+        <div class="slide-grid two-col">
+          <div class="slide-copy">
+            <p class="eyebrow">MongoDB - Confluent Kafka - Go services</p>
+            <h1>Solving the Dual Write Problem with Debezium</h1>
+            <p class="lead">
+              Why direct database plus Kafka writes fail, how outbox gives us one commit boundary, and how
+              Debezium publishes committed MongoDB changes to Kafka.
+            </p>
+            <div class="terminal-shot" role="img" aria-label="Illustrative terminal output for a Debezium connector streaming outbox events">
+              <div class="terminal-bar">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <pre><code>cd demo
+docker compose up --build -d
+sh scripts/create-checkout.sh checkout-1001
+sh scripts/watch-kafka.sh
+sh scripts/watch-mongo.sh</code></pre>
+            </div>
+          </div>
+          <div class="system-map large-map" aria-label="System flow diagram">
+            <div class="node service">Go service</div>
+            <div class="arrow"></div>
+            <div class="node database">MongoDB</div>
+            <div class="arrow"></div>
+            <div class="node connector">Debezium</div>
+            <div class="arrow"></div>
+            <div class="node topic">Confluent Kafka</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" id="agenda" data-title="Agenda">
+        <div class="slide-copy narrow">
+          <p class="eyebrow">What we will cover</p>
+          <h2>From request coupling to durable event delivery</h2>
+        </div>
+        <ol class="agenda-list">
+          <li><a href="#sync-vs-async">Synchronous vs asynchronous communication</a></li>
+          <li><a href="#dual-write">What is the dual write problem?</a></li>
+          <li><a href="#inconsistent-state">Why database + Kafka can become inconsistent</a></li>
+          <li><a href="#outbox-pattern">Outbox Pattern</a></li>
+          <li><a href="#debezium">How Debezium solves it</a></li>
+          <li><a href="#demo">Demo storyboard</a></li>
+          <li><a href="#lessons-learned">Lessons learned</a></li>
+        </ol>
+      </section>
+
+      <section class="slide" id="sync-vs-async" data-title="Sync vs Async">
+        <div class="slide-grid two-col">
+          <div class="slide-copy">
+            <p class="eyebrow">1. Synchronous vs asynchronous communication</p>
+            <h2>Sync blocks now. Async delivers later.</h2>
+            <p>
+              Synchronous calls are easy to reason about until latency, retries, and timeout ambiguity
+              spread across services. Async reduces coupling, but correctness moves into delivery,
+              ordering, idempotency, and observability.
+            </p>
+          </div>
+          <div class="comparison" aria-label="Synchronous and asynchronous comparison">
+            <article class="comparison-panel">
+              <h3>Synchronous</h3>
+              <ul>
+                <li>Caller waits for callee</li>
+                <li>Latency chains across services</li>
+                <li>Timeouts create unknown state</li>
+                <li>Retries can duplicate side effects</li>
+              </ul>
+            </article>
+            <article class="comparison-panel accent">
+              <h3>Asynchronous</h3>
+              <ul>
+                <li>Caller commits local state first</li>
+                <li>Consumers react independently</li>
+                <li>Backpressure moves to brokers</li>
+                <li>Handlers must be idempotent</li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" id="dual-write" data-title="Dual Write">
+        <div class="slide-grid two-col">
+          <div class="slide-copy">
+            <p class="eyebrow">2. What is the dual write problem?</p>
+            <h2>Two commits. One request. No shared transaction.</h2>
+            <p>
+              A Go service writes business state to MongoDB, then publishes a Kafka event. The database and
+              broker do not share a transaction, so every error path can leave one side committed without the
+              other.
+            </p>
+            <div class="code-block">
+              <pre><code>func CompleteCheckout(ctx context.Context, cmd Command) error {
+  orderID := orders.Insert(ctx, cmd)       // MongoDB commit
+  return producer.Publish(ctx, Event{      // Kafka publish
+    Type: "order.completed",
+    AggregateID: orderID,
+  })
+}</code></pre>
+            </div>
+          </div>
+          <div class="failure-ladder" aria-label="Dual write failure ladder">
+            <div class="step good">1. MongoDB write succeeds</div>
+            <div class="step warning">2. Process crashes</div>
+            <div class="step bad">3. Kafka event never appears</div>
+            <div class="step ghost">4. Downstream service waits forever</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" id="inconsistent-state" data-title="Inconsistent State">
+        <div class="slide-copy narrow">
+          <p class="eyebrow">3. Why database + Kafka can become inconsistent</p>
+          <h2>Failure timing decides the truth.</h2>
+          <p>
+            The hard part is the gray area: the service may not know whether Kafka accepted the event,
+            whether retry is safe, or whether consumers already observed it.
+          </p>
+        </div>
+        <div class="failure-grid">
+          <article>
+            <h3>DB commit succeeds, publish fails</h3>
+            <p>MongoDB has the order. Kafka has no event. Consumers miss the transition.</p>
+          </article>
+          <article>
+            <h3>Publish succeeds, response times out</h3>
+            <p>The service retries. Kafka may get a duplicate event unless the producer and consumer enforce idempotency.</p>
+          </article>
+          <article>
+            <h3>Publish succeeds, DB rolls back</h3>
+            <p>Kafka announces state that never committed. Consumers build behavior from a false fact.</p>
+          </article>
+          <article>
+            <h3>Recovery script republishes badly</h3>
+            <p>Manual repair can reorder events, skip headers, or use a payload shape consumers do not expect.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="slide" id="outbox-pattern" data-title="Outbox Pattern">
+        <div class="slide-grid two-col">
+          <div class="slide-copy">
+            <p class="eyebrow">4. Outbox Pattern</p>
+            <h2>Commit state and event intent together.</h2>
+            <p>
+              The service no longer writes MongoDB and Kafka directly. It writes the business document and an
+              outbox document together. The commit boundary becomes one database operation.
+            </p>
+            <ul class="check-list">
+              <li>Business data and event intent commit together.</li>
+              <li>Kafka publishing can lag without losing the event.</li>
+              <li>Consumers still need idempotency because delivery can repeat.</li>
+            </ul>
+          </div>
+          <div class="document-stack" aria-label="MongoDB collections with business data and outbox event">
+            <article class="mongo-doc">
+              <h3>orders</h3>
+              <pre><code>{
+  "_id": "ord_2048",
+  "status": "COMPLETED",
+  "total": 2490
+}</code></pre>
+            </article>
+            <article class="mongo-doc outbox-doc">
+              <h3>outbox_events</h3>
+              <pre><code>{
+  "_id": "evt_9182",
+  "aggregate_id": "ord_2048",
+  "type": "order.completed",
+  "topic": "marketplace.orders.events.v1"
+}</code></pre>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" id="outbox-flow" data-title="Outbox Flow">
+        <div class="slide-copy narrow">
+          <p class="eyebrow">Outbox mechanics</p>
+          <h2>Service writes intent. Debezium publishes it.</h2>
+        </div>
+        <div class="sequence-diagram" aria-label="Outbox sequence from request to Kafka">
+          <div class="lane">
+            <span>API request</span>
+            <strong>Complete checkout</strong>
+          </div>
+          <div class="lane">
+            <span>Go service</span>
+            <strong>Validate command</strong>
+          </div>
+          <div class="lane">
+            <span>MongoDB transaction</span>
+            <strong>Insert order + outbox</strong>
+          </div>
+          <div class="lane">
+            <span>CDC relay</span>
+            <strong>Read committed outbox</strong>
+          </div>
+          <div class="lane">
+            <span>Kafka topic</span>
+            <strong>Publish event</strong>
+          </div>
+        </div>
+        <p class="callout">
+          Debezium is the relay in this deck. It does not replace the outbox write; it observes the committed
+          outbox document and emits it to Kafka.
+        </p>
+      </section>
+
+      <section class="slide" id="debezium" data-title="Debezium">
+        <div class="slide-grid two-col">
+          <div class="slide-copy">
+            <p class="eyebrow">5. How Debezium solves it</p>
+            <h2>Debezium streams committed MongoDB changes into Kafka.</h2>
+            <p>
+              A Debezium MongoDB connector watches collection changes after they commit. With an outbox
+              collection, that means event intent becomes a durable source for Kafka publication.
+            </p>
+            <ul class="check-list">
+              <li>Connector restarts from stored offsets.</li>
+              <li>Kafka Connect handles connector lifecycle and scaling boundaries.</li>
+              <li>Confluent Kafka becomes the delivery surface for downstream Go consumers.</li>
+            </ul>
+          </div>
+          <div class="connector-card">
+            <h3>Connector shape</h3>
+            <pre><code>{
+  "connector.class": "io.debezium.connector.mongodb.MongoDbConnector",
+  "mongodb.connection.string": "mongodb://mongo:27017",
+  "topic.prefix": "demo",
+  "collection.include.list": "shop.outbox_events"
+}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" id="cdc-pipeline" data-title="CDC Pipeline">
+        <div class="slide-copy narrow">
+          <p class="eyebrow">Debezium pipeline</p>
+          <h2>The MongoDB commit becomes the source of truth.</h2>
+        </div>
+        <div class="pipeline" aria-label="CDC pipeline diagram">
+          <article>
+            <span class="badge">1</span>
+            <h3>Go service</h3>
+            <p>Writes domain state and outbox document together.</p>
+          </article>
+          <article>
+            <span class="badge">2</span>
+            <h3>MongoDB</h3>
+            <p>Commits the source of truth once.</p>
+          </article>
+          <article>
+            <span class="badge">3</span>
+            <h3>Debezium</h3>
+            <p>Captures committed outbox changes from MongoDB.</p>
+          </article>
+          <article>
+            <span class="badge">4</span>
+            <h3>Confluent Kafka</h3>
+            <p>Receives events for fan-out to consumers.</p>
+          </article>
+          <article>
+            <span class="badge">5</span>
+            <h3>Go consumer</h3>
+            <p>Processes the event with idempotency by event id.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="slide" id="demo" data-title="Demo">
+        <div class="slide-copy narrow">
+          <p class="eyebrow">6. Demo storyboard</p>
+          <h2>Run one checkout through MongoDB, Debezium, Kafka, and Go.</h2>
+          <p>
+            The lab runs two Go microservices: Orders owns the checkout write and outbox,
+            Fulfillment owns its inbox, dedupe store, and fulfillment records.
+          </p>
+        </div>
+        <div class="demo-board">
+          <article>
+            <span>01</span>
+            <h3>Send command</h3>
+            <p><code>POST /checkouts/{id}/complete</code> enters the Go API.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Commit MongoDB transaction</h3>
+            <p>Insert or update business state and append <code>outbox_events</code>.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Debezium captures change</h3>
+            <p>MongoDB connector tails the committed outbox document.</p>
+          </article>
+          <article>
+            <span>04</span>
+            <h3>Kafka receives event</h3>
+            <p>Confluent Kafka topic carries the event to consumers.</p>
+          </article>
+          <article>
+            <span>05</span>
+            <h3>Consumer handles once</h3>
+            <p>Fulfillment stores the processed event id before writing side effects.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="slide" id="demo-event" data-title="Demo Event">
+        <div class="slide-grid two-col">
+          <div class="slide-copy">
+            <p class="eyebrow">Demo event shape</p>
+            <h2>Make replay and dedupe explicit in the payload.</h2>
+            <p>
+              The exact schema is illustrative, but the fields show what the demo needs to explain: stable event
+              id, aggregate id, type, version, occurred time, and payload.
+            </p>
+          </div>
+          <div class="code-block tall">
+            <pre><code>{
+  "event_id": "evt_9182",
+  "event_type": "order.completed",
+  "aggregate_type": "order",
+  "aggregate_id": "ord_2048",
+  "event_version": 1,
+  "occurred_at": "2026-05-29T09:30:00Z",
+  "payload": {
+    "checkout_id": "chk_4501",
+    "order_id": "ord_2048",
+    "shop_id": "shop_77",
+    "total_amount": 2490
+  }
+}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" id="demo-consumer" data-title="Consumer">
+        <div class="slide-grid two-col">
+          <div class="slide-copy">
+            <p class="eyebrow">Consumer responsibility</p>
+            <h2>Debezium improves delivery, but consumers still own idempotency.</h2>
+            <p>
+              CDC can replay after restarts, rebalance, or offset recovery. The consumer should treat duplicate
+              event ids as normal and safe.
+            </p>
+          </div>
+          <div class="code-block">
+            <pre><code>func Handle(ctx context.Context, event Event) error {
+  duplicate := inbox.InsertProcessedEvent(ctx, event.ID)
+  if duplicate {
+    return nil
+  }
+
+  return fulfillments.Start(ctx, event.OrderID)
+}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" id="run-lab" data-title="Run Lab">
+        <div class="slide-grid two-col">
+          <div class="slide-copy">
+            <p class="eyebrow">Runnable lab</p>
+            <h2>Run the failure boundary locally.</h2>
+            <p>
+              The repo now includes two Go microservices, MongoDB replica set setup, Confluent Kafka,
+              Debezium Connect, and a MongoDB outbox connector.
+            </p>
+            <ul class="check-list">
+              <li><code>orders-api</code> writes <code>orders</code> and <code>outbox_events</code> in one MongoDB transaction.</li>
+              <li>Debezium transforms outbox documents into <code>marketplace.orders.events.v1</code>.</li>
+              <li><code>fulfillment-consumer</code> stores <code>processed_events</code> and <code>fulfillments</code>.</li>
+            </ul>
+          </div>
+          <div class="code-block">
+            <pre><code>cd demo
+docker compose up --build -d
+sh scripts/watch-connect.sh
+sh scripts/create-checkout.sh checkout-1001
+sh scripts/watch-kafka.sh
+sh scripts/watch-mongo.sh
+docker compose logs -f fulfillment-consumer</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" id="lessons-learned" data-title="Lessons Learned">
+        <div class="slide-copy narrow">
+          <p class="eyebrow">7. Lessons learned</p>
+          <h2>Durable publication is not exactly-once business behavior.</h2>
+        </div>
+        <div class="lesson-grid">
+          <article>
+            <h3>Use one commit boundary</h3>
+            <p>Write domain state and event intent together in MongoDB.</p>
+          </article>
+          <article>
+            <h3>Keep events boring</h3>
+            <p>Stable ids, versions, aggregate keys, and timestamps make replay manageable.</p>
+          </article>
+          <article>
+            <h3>Assume at-least-once delivery</h3>
+            <p>Kafka consumers must dedupe by event id and be safe to retry.</p>
+          </article>
+          <article>
+            <h3>Monitor the relay</h3>
+            <p>Track connector status, lag, dead-letter paths, and schema drift.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="deck-footer" aria-label="Progress">
+      <div class="progress-track">
+        <div class="progress-bar"></div>
+      </div>
+      <p>Use arrow keys, space, Home, and End. Deep links are available in the address bar.</p>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>
