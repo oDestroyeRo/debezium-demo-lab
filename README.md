@@ -69,7 +69,7 @@ Service boundaries:
 
 ```text
 orders-service
-  owns checkout.orders and checkout.outbox_events
+  owns orders.orders and orders.outbox_events
   exposes POST /checkouts/{checkoutID}/complete
   writes business state and outbox event in one MongoDB transaction
 
@@ -100,7 +100,7 @@ Produce an order completion event through `orders-service`:
 sh scripts/create-checkout.sh checkout-1001
 ```
 
-The Orders service writes `checkout.orders` and `checkout.outbox_events` in the same MongoDB transaction. Debezium captures the committed `outbox_events` document and publishes to:
+The Orders service writes `orders.orders` and `orders.outbox_events` in the same MongoDB transaction. Debezium captures the committed `outbox_events` document and publishes to:
 
 ```text
 orders.events.v1
@@ -136,7 +136,7 @@ Watch Kafka messages from the beginning:
 sh scripts/watch-kafka.sh
 ```
 
-Inspect MongoDB state for both microservices. This prints `checkout.orders`, `checkout.outbox_events`, `fulfillment.processed_events`, and `fulfillment.fulfillments`:
+Inspect MongoDB state for both microservices. This prints `orders.orders`, `orders.outbox_events`, `fulfillment.processed_events`, and `fulfillment.fulfillments`:
 
 ```sh
 sh scripts/watch-mongo.sh

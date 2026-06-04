@@ -171,8 +171,8 @@ demo/internal/fulfillment/</code></pre>
 <p>Synchronous communication is easy to reason about at first: service A calls service B and waits. It is good when the caller needs an immediate decision. But it couples latency and availability. If the callee is slow, the caller is slow. If the callee times out, the caller may not know whether the callee did the work.</p>
 <p>Async communication decouples the request path. Service A commits its own state and emits a fact. Service B reacts later. That helps scalability and resilience, but correctness does not disappear. It moves into delivery semantics, ordering, retries, deduplication, and monitoring.</p>
 <p>Example:</p>
-<pre><code class="language-text">Synchronous: checkout-api calls fulfillment-api directly.
-Asynchronous: checkout-api publishes order.completed, fulfillment consumes it.</code></pre>
+<pre><code class="language-text">Synchronous: orders-service calls fulfillment-service directly.
+Asynchronous: orders-service records order.completed, fulfillment-service consumes it.</code></pre>
 <p>Important contrast:</p>
 <ul>
 <li>Sync failure: timeout creates unknown remote state.</li>
@@ -214,8 +214,8 @@ return producer.Publish(ctx, Event{Type: &quot;order.completed&quot;})</code></p
 <p>Say:</p>
 <p>The outbox pattern says: do not publish directly to Kafka inside the request transaction. Instead, write the business state and an outbox event record in the same database transaction.</p>
 <p>In this lab:</p>
-<pre><code class="language-text">checkout.orders
-checkout.outbox_events</code></pre>
+<pre><code class="language-text">orders.orders
+orders.outbox_events</code></pre>
 <p><code>orders-service</code> writes both:</p>
 <pre><code class="language-text">orders: status = COMPLETED
 outbox_events: type = order.completed
@@ -244,14 +244,14 @@ outbox_events: payload.event_id = event id</code></pre>
 <p>Say:</p>
 <p>Debezium is a CDC engine. CDC means change data capture. It reads committed database changes and streams them into Kafka Connect. For MongoDB, it watches change streams from the replica set.</p>
 <p>In this lab, Debezium is configured to watch only:</p>
-<pre><code class="language-text">checkout.outbox_events</code></pre>
+<pre><code class="language-text">orders.outbox_events</code></pre>
 <p>Then the MongoDB outbox event router transforms the outbox document into an application-level Kafka message.</p>
 <p>Point out the config shape:</p>
 <pre><code class="language-json">&quot;connector.class&quot;: &quot;io.debezium.connector.mongodb.MongoDbConnector&quot;,
 &quot;mongodb.connection.string&quot;: &quot;mongodb://mongo:27017/?replicaSet=rs0&quot;,
-&quot;topic.prefix&quot;: &quot;demo&quot;,
-&quot;database.include.list&quot;: &quot;checkout&quot;,
-&quot;collection.include.list&quot;: &quot;checkout.outbox_events&quot;,
+&quot;topic.prefix&quot;: &quot;orders&quot;,
+&quot;database.include.list&quot;: &quot;orders&quot;,
+&quot;collection.include.list&quot;: &quot;orders.outbox_events&quot;,
 &quot;capture.mode&quot;: &quot;change_streams_update_full&quot;,
 &quot;transforms.outbox.type&quot;: &quot;io.debezium.connector.mongodb.transforms.outbox.MongoEventRouter&quot;,
 &quot;transforms.outbox.route.topic.replacement&quot;: &quot;${routedByValue}.events.v1&quot;</code></pre>
@@ -367,7 +367,7 @@ value contains event_id, event_version, checkout_id, order_id, shop_id, total_am
 <p>Expected:</p>
 <pre><code class="language-text">fulfillment started event_id=... order_id=... topic=orders.events.v1 offset=...</code></pre>
 <p>Say:</p>
-<p>This is now a real microservice boundary. <code>orders-service</code> owns <code>checkout.orders</code> and <code>checkout.outbox_events</code>. <code>fulfillment-service</code> owns <code>fulfillment.processed_events</code> and <code>fulfillment.fulfillments</code>. It inserts the processed event id first, then upserts the fulfillment side effect in the same MongoDB transaction.</p>
+<p>This is now a real microservice boundary. <code>orders-service</code> owns <code>orders.orders</code> and <code>orders.outbox_events</code>. <code>fulfillment-service</code> owns <code>fulfillment.processed_events</code> and <code>fulfillment.fulfillments</code>. It inserts the processed event id first, then upserts the fulfillment side effect in the same MongoDB transaction.</p>
 <div class="heading-row"><h3 id="produce-a-second-event">Produce A Second Event</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
 <p>Run in another pane:</p>
 <pre><code class="language-sh">sh scripts/create-checkout.sh checkout-demo-002</code></pre>

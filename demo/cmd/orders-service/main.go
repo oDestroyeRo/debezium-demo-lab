@@ -19,7 +19,7 @@ import (
 
 const (
 	defaultMongoURI = "mongodb://localhost:27017/?replicaSet=rs0"
-	defaultDatabase = "checkout"
+	defaultDatabase = "orders"
 	defaultHTTPAddr = ":8080"
 )
 

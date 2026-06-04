@@ -275,9 +275,9 @@ sh scripts/watch-mongo.sh</code></pre>
             <pre><code>{
   "connector.class": "io.debezium.connector.mongodb.MongoDbConnector",
   "mongodb.connection.string": "mongodb://mongo:27017/?replicaSet=rs0",
-  "topic.prefix": "demo",
-  "database.include.list": "checkout",
-  "collection.include.list": "checkout.outbox_events",
+  "topic.prefix": "orders",
+  "database.include.list": "orders",
+  "collection.include.list": "orders.outbox_events",
   "capture.mode": "change_streams_update_full",
   "transforms.outbox.route.topic.replacement":
     "${routedByValue}.events.v1"
@@ -325,7 +325,7 @@ sh scripts/watch-mongo.sh</code></pre>
           <p class="eyebrow">6. Demo storyboard</p>
           <h2>Run one checkout through MongoDB, Debezium, Kafka, and Go.</h2>
           <p>
-            The lab runs two Go microservices: <code>orders-service</code> owns the checkout write and outbox,
+            The lab runs two Go microservices: <code>orders-service</code> owns the order write and outbox,
             while <code>fulfillment-service</code> owns its inbox, dedupe store, and fulfillment records.
           </p>
         </div>

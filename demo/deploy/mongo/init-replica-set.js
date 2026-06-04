@@ -28,9 +28,9 @@ if (!ready) {
   throw new Error("MongoDB replica set did not become primary");
 }
 
-const checkout = db.getSiblingDB("checkout");
-checkout.orders.createIndex({ checkout_id: 1 }, { unique: true });
-checkout.outbox_events.createIndex({ aggregateid: 1 });
-checkout.outbox_events.createIndex({ aggregatetype: 1 });
+const orders = db.getSiblingDB("orders");
+orders.orders.createIndex({ checkout_id: 1 }, { unique: true });
+orders.outbox_events.createIndex({ aggregateid: 1 });
+orders.outbox_events.createIndex({ aggregatetype: 1 });
 
-print("MongoDB replica set and checkout indexes are ready");
+print("MongoDB replica set and orders indexes are ready");

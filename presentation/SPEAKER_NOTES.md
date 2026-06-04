@@ -137,8 +137,8 @@ Async communication decouples the request path. Service A commits its own state 
 Example:
 
 ```text
-Synchronous: checkout-api calls fulfillment-api directly.
-Asynchronous: checkout-api publishes order.completed, fulfillment consumes it.
+Synchronous: orders-service calls fulfillment-service directly.
+Asynchronous: orders-service records order.completed, fulfillment-service consumes it.
 ```
 
 Important contrast:
@@ -220,8 +220,8 @@ The outbox pattern says: do not publish directly to Kafka inside the request tra
 In this lab:
 
 ```text
-checkout.orders
-checkout.outbox_events
+orders.orders
+orders.outbox_events
 ```
 
 `orders-service` writes both:
@@ -281,7 +281,7 @@ Debezium is a CDC engine. CDC means change data capture. It reads committed data
 In this lab, Debezium is configured to watch only:
 
 ```text
-checkout.outbox_events
+orders.outbox_events
 ```
 
 Then the MongoDB outbox event router transforms the outbox document into an application-level Kafka message.
@@ -291,9 +291,9 @@ Point out the config shape:
 ```json
 "connector.class": "io.debezium.connector.mongodb.MongoDbConnector",
 "mongodb.connection.string": "mongodb://mongo:27017/?replicaSet=rs0",
-"topic.prefix": "demo",
-"database.include.list": "checkout",
-"collection.include.list": "checkout.outbox_events",
+"topic.prefix": "orders",
+"database.include.list": "orders",
+"collection.include.list": "orders.outbox_events",
 "capture.mode": "change_streams_update_full",
 "transforms.outbox.type": "io.debezium.connector.mongodb.transforms.outbox.MongoEventRouter",
 "transforms.outbox.route.topic.replacement": "${routedByValue}.events.v1"
@@ -514,7 +514,7 @@ fulfillment started event_id=... order_id=... topic=orders.events.v1 offset=...
 
 Say:
 
-This is now a real microservice boundary. `orders-service` owns `checkout.orders` and `checkout.outbox_events`. `fulfillment-service` owns `fulfillment.processed_events` and `fulfillment.fulfillments`. It inserts the processed event id first, then upserts the fulfillment side effect in the same MongoDB transaction.
+This is now a real microservice boundary. `orders-service` owns `orders.orders` and `orders.outbox_events`. `fulfillment-service` owns `fulfillment.processed_events` and `fulfillment.fulfillments`. It inserts the processed event id first, then upserts the fulfillment side effect in the same MongoDB transaction.
 
 ### Produce A Second Event
 

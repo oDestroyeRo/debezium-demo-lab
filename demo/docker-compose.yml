@@ -102,7 +102,7 @@ services:
     environment:
       HTTP_ADDR: :8080
       MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0
-      MONGODB_DATABASE: checkout
+      MONGODB_DATABASE: orders
 
   fulfillment-service:
     build: .
