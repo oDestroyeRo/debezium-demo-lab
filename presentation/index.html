@@ -393,18 +393,20 @@ sh scripts/watch-mongo.sh</code></pre>
             <p class="eyebrow">Consumer responsibility</p>
             <h2>Debezium improves delivery, but consumers still own idempotency.</h2>
             <p>
-              CDC can replay after restarts, rebalance, or offset recovery. The consumer should treat duplicate
-              event ids as normal and safe.
+              CDC can replay after restarts, rebalance, or offset recovery. The consumer should record the
+              event id and business side effect in one local transaction.
             </p>
           </div>
           <div class="code-block">
             <pre><code>func Handle(ctx context.Context, event Event) error {
-  duplicate := inbox.InsertProcessedEvent(ctx, event.ID)
-  if duplicate {
-    return nil
-  }
+  return db.Transaction(ctx, func(tx Tx) error {
+    duplicate := inbox.InsertProcessedEvent(ctx, tx, event.ID)
+    if duplicate {
+      return nil
+    }
 
-  return fulfillments.Start(ctx, event.OrderID)
+    return fulfillments.Start(ctx, tx, event.OrderID)
+  })
 }</code></pre>
           </div>
         </div>
