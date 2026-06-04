@@ -417,10 +417,11 @@ sh scripts/watch-mongo.sh</code></pre>
             <h2>Run the failure boundary locally.</h2>
             <p>
               The repo now includes two Go microservices, MongoDB replica set setup, Confluent Kafka,
-              Debezium Connect, and a MongoDB outbox connector.
+              a Kafka topic creation job, Debezium Connect, and a MongoDB outbox connector.
             </p>
             <ul class="check-list">
               <li><code>orders-service</code> writes <code>orders</code> and <code>outbox_events</code> in one MongoDB transaction.</li>
+              <li>Compose creates <code>orders.events.v1</code> before the consumer starts.</li>
               <li>Debezium transforms outbox documents into <code>orders.events.v1</code>.</li>
               <li><code>fulfillment-service</code> records <code>processed_events</code> and upserts <code>fulfillments</code>.</li>
             </ul>

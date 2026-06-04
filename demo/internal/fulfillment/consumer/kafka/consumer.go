@@ -11,6 +11,7 @@ import (
 	"github.com/odestroyero/debezium-demo-lab/internal/fulfillment/domain"
 	fulfillmentsvc "github.com/odestroyero/debezium-demo-lab/internal/fulfillment/service"
 	"github.com/segmentio/kafka-go"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type Config struct {
@@ -61,6 +62,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 
 		if err := c.handleMessage(ctx, msg); err != nil {
 			log.Printf("handle message topic=%s partition=%d offset=%d: %v", msg.Topic, msg.Partition, msg.Offset, err)
+			continue
 		}
 
 		if c.groupID != "" {
@@ -144,8 +146,10 @@ func decodeEvent(value []byte) (domain.OrderCompletedEvent, error) {
 	}
 
 	var event domain.OrderCompletedEvent
-	if err := json.Unmarshal(value, &event); err != nil {
-		return domain.OrderCompletedEvent{}, fmt.Errorf("decode order completed event: %w", err)
+	if err := bson.UnmarshalExtJSON(value, false, &event); err != nil {
+		if jsonErr := json.Unmarshal(value, &event); jsonErr != nil {
+			return domain.OrderCompletedEvent{}, fmt.Errorf("decode order completed event: %w", err)
+		}
 	}
 	return event, nil
 }

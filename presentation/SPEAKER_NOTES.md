@@ -369,7 +369,7 @@ docker compose up --build -d
 
 Say while it starts:
 
-This starts MongoDB as a single-node replica set because MongoDB change streams need replica-set behavior. It starts one Confluent Kafka broker in KRaft mode, Debezium Connect, a one-shot connector registration container, `orders-service`, and `fulfillment-service`.
+This starts MongoDB as a single-node replica set because MongoDB change streams need replica-set behavior. It starts one Confluent Kafka broker in KRaft mode, creates the `orders.events.v1` topic, starts Debezium Connect, runs a one-shot connector registration container, starts `orders-service`, and then starts `fulfillment-service`.
 
 Check:
 
@@ -381,6 +381,7 @@ Expected:
 
 ```text
 broker: healthy
+topic-init: exited 0
 mongo: up
 connect: up
 orders-service: up

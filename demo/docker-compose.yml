@@ -26,6 +26,19 @@ services:
       timeout: 10s
       retries: 12
 
+  topic-init:
+    image: confluentinc/cp-kafka:8.2.1
+    depends_on:
+      broker:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command: >
+      "kafka-topics --bootstrap-server broker:29092
+      --create --if-not-exists
+      --topic orders.events.v1
+      --partitions 1
+      --replication-factor 1"
+
   mongo:
     image: mongo:8.3.2
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
@@ -95,8 +108,8 @@ services:
     build: .
     entrypoint: ["/usr/local/bin/fulfillment-service"]
     depends_on:
-      broker:
-        condition: service_healthy
+      topic-init:
+        condition: service_completed_successfully
       connector-init:
         condition: service_completed_successfully
       mongo-setup:

@@ -79,7 +79,7 @@ fulfillment-service
   records event ids before applying fulfillment side effects
 ```
 
-Start MongoDB, Confluent Kafka, Debezium Connect, the connector registration job, `orders-service`, and `fulfillment-service`:
+Start MongoDB, Confluent Kafka, the Kafka topic creation job, Debezium Connect, the connector registration job, `orders-service`, and `fulfillment-service`:
 
 ```sh
 cd demo
@@ -123,6 +123,7 @@ Behavior:
 
 - Reads `order.completed` events from Kafka with consumer group `fulfillment-service`.
 - Uses the event id as `_id` in `fulfillment.processed_events`.
+- Leaves failed decode or handler attempts uncommitted so they can be retried after a fix.
 - Treats duplicate event ids as already handled and commits the Kafka offset.
 - Upserts one fulfillment record per `order_id` into `fulfillment.fulfillments`.
 - Stores Kafka metadata, headers, event type, aggregate id, and timestamps so the demo can inspect replay and dedupe behavior.
