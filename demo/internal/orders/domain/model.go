@@ -10,7 +10,7 @@ const (
 	OrderCompletedEventType = "order.completed"
 	OrderAggregateType      = "order"
 	OrdersRoute             = "orders"
-	OrdersTopic             = "marketplace.orders.events.v1"
+	OrdersTopic             = "orders.events.v1"
 )
 
 var (

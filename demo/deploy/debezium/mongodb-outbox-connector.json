@@ -13,6 +13,6 @@
   "value.converter.schemas.enable": "false",
   "transforms": "outbox",
   "transforms.outbox.type": "io.debezium.connector.mongodb.transforms.outbox.MongoEventRouter",
-  "transforms.outbox.route.topic.replacement": "marketplace.${routedByValue}.events.v1",
+  "transforms.outbox.route.topic.replacement": "${routedByValue}.events.v1",
   "transforms.outbox.collection.fields.additional.placement": "type:header:event_type,occurred_at:envelope:occurred_at"
 }

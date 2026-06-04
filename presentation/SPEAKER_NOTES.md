@@ -91,12 +91,12 @@ Time: 3 minutes.
 
 Say:
 
-This deck has two parts. First, the reasoning: why dual writes fail and how the outbox pattern changes the consistency boundary. Second, the lab: a Go API writes an order and an outbox event into MongoDB, Debezium captures the outbox document, Kafka receives the event, and a Go consumer processes it.
+This deck has two parts. First, the reasoning: why dual writes fail and how the outbox pattern changes the consistency boundary. Second, the lab: `orders-api` writes an order and an outbox event into MongoDB, Debezium captures the outbox document, Kafka receives the event, and `fulfillment-consumer` processes it.
 
 Point at the flow:
 
 ```text
-Go service -> MongoDB -> Debezium -> Confluent Kafka -> Go consumer
+orders-api -> MongoDB -> Debezium -> Confluent Kafka -> fulfillment-consumer
 ```
 
 Emphasize:
@@ -104,7 +104,7 @@ Emphasize:
 - MongoDB is the source of truth for the business state and event intent.
 - Debezium is the relay from committed database changes to Kafka.
 - Kafka is the fan-out and replay surface.
-- The consumer still needs idempotency.
+- `fulfillment-consumer` still needs idempotency.
 
 Transition:
 
@@ -224,11 +224,14 @@ checkout.orders
 checkout.outbox_events
 ```
 
-The API writes both:
+`orders-api` writes both:
 
 ```text
 orders: status = COMPLETED
 outbox_events: type = order.completed
+outbox_events: aggregatetype = orders
+outbox_events: aggregateid = order id
+outbox_events: payload.event_id = event id
 ```
 
 Now if the request commits, both the order and event intent exist. If the request rolls back, neither exists.
@@ -250,10 +253,10 @@ Say:
 The request flow changes:
 
 ```text
-API request -> Go service -> MongoDB transaction -> CDC relay -> Kafka topic
+API request -> orders-api -> MongoDB transaction -> CDC relay -> Kafka topic
 ```
 
-The Go service owns validation and transaction intent. MongoDB owns the committed truth. Debezium owns observing committed outbox changes and publishing them to Kafka.
+`orders-api` owns validation and transaction intent. MongoDB owns the committed truth. Debezium owns observing committed outbox changes and publishing them to Kafka.
 
 This is the strongest sentence on the slide:
 
@@ -287,8 +290,13 @@ Point out the config shape:
 
 ```json
 "connector.class": "io.debezium.connector.mongodb.MongoDbConnector",
+"mongodb.connection.string": "mongodb://mongo:27017/?replicaSet=rs0",
+"topic.prefix": "demo",
+"database.include.list": "checkout",
 "collection.include.list": "checkout.outbox_events",
-"transforms.outbox.type": "io.debezium.connector.mongodb.transforms.outbox.MongoEventRouter"
+"capture.mode": "change_streams_update_full",
+"transforms.outbox.type": "io.debezium.connector.mongodb.transforms.outbox.MongoEventRouter",
+"transforms.outbox.route.topic.replacement": "${routedByValue}.events.v1"
 ```
 
 Emphasize:
@@ -310,7 +318,7 @@ Say:
 
 The pipeline has five responsibilities.
 
-The Go service writes one transaction. MongoDB commits one source of truth. Debezium captures the outbox change. Kafka receives the event. The consumer processes idempotently.
+`orders-api` writes one transaction. MongoDB commits one source of truth. Debezium captures the outbox change. Kafka receives the event. `fulfillment-consumer` processes idempotently.
 
 Explain the boundary:
 
@@ -345,10 +353,10 @@ Say:
 The demo follows one checkout:
 
 1. Send `POST /checkouts/{id}/complete`.
-2. The Go API inserts one `orders` document and one `outbox_events` document in the same MongoDB transaction.
+2. `orders-api` inserts one `orders` document and one `outbox_events` document in the same MongoDB transaction.
 3. Debezium captures the committed outbox event.
-4. Kafka receives the message on `marketplace.orders.events.v1`.
-5. The Fulfillment consumer stores the processed event id, then writes a fulfillment record.
+4. Kafka receives the message on `orders.events.v1`.
+5. `fulfillment-consumer` records the processed event id, then writes a fulfillment record.
 
 ### Start The Lab
 
@@ -361,7 +369,7 @@ docker compose up --build -d
 
 Say while it starts:
 
-This starts MongoDB as a single-node replica set because MongoDB change streams need replica-set behavior. It starts one Confluent Kafka broker in KRaft mode, Debezium Connect, a one-shot connector registration container, the Go API, and the Go consumer.
+This starts MongoDB as a single-node replica set because MongoDB change streams need replica-set behavior. It starts one Confluent Kafka broker in KRaft mode, Debezium Connect, a one-shot connector registration container, `orders-api`, and `fulfillment-consumer`.
 
 Check:
 
@@ -420,13 +428,13 @@ Expected shape:
   "checkout_id": "checkout-demo-001",
   "order_id": "...",
   "outbox_event_id": "...",
-  "topic": "marketplace.orders.events.v1"
+  "topic": "orders.events.v1"
 }
 ```
 
 Say:
 
-The API response gives us both IDs. The order id is the aggregate id. The outbox event id is the stable event id used for dedupe.
+The `orders-api` response gives us both IDs. The order id is the aggregate id. The outbox event id is the stable event id used by `fulfillment-consumer` for dedupe.
 
 ### Inspect MongoDB
 
@@ -438,7 +446,7 @@ sh scripts/watch-mongo.sh
 
 Say:
 
-Look for Orders state first, then Fulfillment state after the consumer processes the event.
+Look for Orders state first, then Fulfillment state after `fulfillment-consumer` processes the event.
 
 Business state:
 
@@ -460,11 +468,12 @@ Fulfillment state:
 ```text
 processed_events._id = outbox event id
 fulfillments.order_id = order id
+fulfillments.status = STARTED
 ```
 
 Important:
 
-The Orders records exist because they committed together. Fulfillment records exist only after Kafka delivery and consumer processing.
+The Orders records exist because they committed together. Fulfillment records exist only after Kafka delivery and `fulfillment-consumer` processing.
 
 ### Inspect Kafka
 
@@ -488,7 +497,7 @@ Debezium converted the MongoDB outbox document into a Kafka event. The key suppo
 
 Stop the consumer after one or two messages with `Ctrl-C`.
 
-### Inspect Go Consumer
+### Inspect Fulfillment Consumer
 
 Run:
 
@@ -499,12 +508,12 @@ docker compose logs -f fulfillment-consumer
 Expected:
 
 ```text
-fulfillment started event_id=... order_id=... topic=marketplace.orders.events.v1 offset=...
+fulfillment started event_id=... order_id=... topic=orders.events.v1 offset=...
 ```
 
 Say:
 
-This is now a real microservice boundary. Orders owns `checkout.orders` and `checkout.outbox_events`. Fulfillment owns `fulfillment.processed_events` and `fulfillment.fulfillments`. The consumer persists the processed event id before applying its side effect.
+This is now a real microservice boundary. `orders-api` owns `checkout.orders` and `checkout.outbox_events`. `fulfillment-consumer` owns `fulfillment.processed_events` and `fulfillment.fulfillments`. It inserts the processed event id first, then upserts the fulfillment side effect in the same MongoDB transaction.
 
 ### Produce A Second Event
 
@@ -516,7 +525,7 @@ sh scripts/create-checkout.sh checkout-demo-002
 
 Say:
 
-Watch the consumer log. The API did not publish to Kafka. It only wrote MongoDB. The event still appears because Debezium watches the outbox collection.
+Watch the `fulfillment-consumer` log. `orders-api` did not publish to Kafka. It only wrote MongoDB. The event still appears because Debezium watches the outbox collection.
 
 ### Optional Failure Explanation
 
@@ -572,7 +581,7 @@ apply side effect
 commit local transaction
 ```
 
-In this demo the Fulfillment service uses MongoDB collections for the inbox pattern: `processed_events` for idempotency and `fulfillments` for the side effect.
+In this demo `fulfillment-consumer` uses MongoDB collections for the inbox pattern: `processed_events` for idempotency and `fulfillments` for the side effect. A duplicate event id becomes a no-op, while a new event upserts one fulfillment per `order_id`.
 
 ### 13. Run Lab
 
@@ -587,7 +596,7 @@ Point out:
 - `watch-connect.sh` monitors Debezium connector state.
 - `watch-kafka.sh` monitors messages.
 - `watch-mongo.sh` monitors Orders and Fulfillment database state.
-- `docker compose logs -f fulfillment-consumer` monitors consumer behavior.
+- `docker compose logs -f fulfillment-consumer` monitors Fulfillment consumer behavior.
 
 ### 14. Lessons Learned
 

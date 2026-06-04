@@ -9,7 +9,7 @@ presentation/
   Static GitHub Pages slide deck and speaker notes.
 
 demo/
-  Runnable MongoDB, Confluent Kafka, Debezium, Orders API, and Fulfillment consumer lab.
+  Runnable MongoDB, Confluent Kafka, Debezium, Orders API, and Fulfillment consumer services.
 ```
 
 ## Preview the GitHub Page
@@ -75,8 +75,8 @@ orders-api
 
 fulfillment-consumer
   owns fulfillment.processed_events and fulfillment.fulfillments
-  consumes marketplace.orders.events.v1 with consumer group fulfillment-service
-  persists event ids before applying fulfillment side effects
+  consumes orders.events.v1 with consumer group fulfillment-service
+  records event ids before applying fulfillment side effects
 ```
 
 Start MongoDB, Confluent Kafka, Debezium Connect, the connector registration job, the Orders API microservice, and the Fulfillment consumer microservice:
@@ -94,7 +94,7 @@ Check the Debezium connector:
 sh scripts/watch-connect.sh
 ```
 
-Produce an order completion event through the Go API:
+Produce an order completion event through `orders-api`:
 
 ```sh
 sh scripts/create-checkout.sh checkout-1001
@@ -103,8 +103,29 @@ sh scripts/create-checkout.sh checkout-1001
 The Orders API writes `checkout.orders` and `checkout.outbox_events` in the same MongoDB transaction. Debezium captures the committed `outbox_events` document and publishes to:
 
 ```text
-marketplace.orders.events.v1
+orders.events.v1
 ```
+
+## Fulfillment Consumer
+
+`fulfillment-consumer` is the downstream microservice in the lab. It demonstrates the consumer-side inbox pattern that still matters after Debezium publishes the outbox event.
+
+Flow:
+
+```text
+Kafka topic orders.events.v1
+  -> fulfillment-consumer
+  -> fulfillment.processed_events
+  -> fulfillment.fulfillments
+```
+
+Behavior:
+
+- Reads `order.completed` events from Kafka with consumer group `fulfillment-service`.
+- Uses the event id as `_id` in `fulfillment.processed_events`.
+- Treats duplicate event ids as already handled and commits the Kafka offset.
+- Upserts one fulfillment record per `order_id` into `fulfillment.fulfillments`.
+- Stores Kafka metadata, headers, event type, aggregate id, and timestamps so the demo can inspect replay and dedupe behavior.
 
 ## Monitor Messages And Database State
 
@@ -114,13 +135,13 @@ Watch Kafka messages from the beginning:
 sh scripts/watch-kafka.sh
 ```
 
-Inspect MongoDB state for both microservices:
+Inspect MongoDB state for both microservices. This prints `checkout.orders`, `checkout.outbox_events`, `fulfillment.processed_events`, and `fulfillment.fulfillments`:
 
 ```sh
 sh scripts/watch-mongo.sh
 ```
 
-Watch the Fulfillment consumer process. It persists processed event IDs in `fulfillment.processed_events` and fulfillment side effects in `fulfillment.fulfillments`:
+Watch the Fulfillment consumer process. It records processed event IDs in `fulfillment.processed_events` and writes fulfillment side effects in `fulfillment.fulfillments`:
 
 ```sh
 docker compose logs -f fulfillment-consumer

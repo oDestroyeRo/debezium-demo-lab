@@ -67,7 +67,7 @@
 <li><a class="depth-3" href="#produce-one-checkout">Produce One Checkout</a></li>
 <li><a class="depth-3" href="#inspect-mongodb">Inspect MongoDB</a></li>
 <li><a class="depth-3" href="#inspect-kafka">Inspect Kafka</a></li>
-<li><a class="depth-3" href="#inspect-go-consumer">Inspect Go Consumer</a></li>
+<li><a class="depth-3" href="#inspect-fulfillment-consumer">Inspect Fulfillment Consumer</a></li>
 <li><a class="depth-3" href="#produce-a-second-event">Produce A Second Event</a></li>
 <li><a class="depth-3" href="#optional-failure-explanation">Optional Failure Explanation</a></li>
 <li><a class="depth-2" href="#slide-notes-after-demo">Slide Notes After Demo</a></li>
@@ -146,15 +146,15 @@ demo/internal/fulfillment/</code></pre>
 <div class="heading-row"><h3 id="1-intro-solving-the-dual-write-problem-with-debezium">1. Intro: Solving the Dual Write Problem with Debezium</h3><a class="slide-link" href="index.html#intro">Open slide</a></div>
 <p>Time: 3 minutes.</p>
 <p>Say:</p>
-<p>This deck has two parts. First, the reasoning: why dual writes fail and how the outbox pattern changes the consistency boundary. Second, the lab: a Go API writes an order and an outbox event into MongoDB, Debezium captures the outbox document, Kafka receives the event, and a Go consumer processes it.</p>
+<p>This deck has two parts. First, the reasoning: why dual writes fail and how the outbox pattern changes the consistency boundary. Second, the lab: <code>orders-api</code> writes an order and an outbox event into MongoDB, Debezium captures the outbox document, Kafka receives the event, and <code>fulfillment-consumer</code> processes it.</p>
 <p>Point at the flow:</p>
-<pre><code class="language-text">Go service -&gt; MongoDB -&gt; Debezium -&gt; Confluent Kafka -&gt; Go consumer</code></pre>
+<pre><code class="language-text">orders-api -&gt; MongoDB -&gt; Debezium -&gt; Confluent Kafka -&gt; fulfillment-consumer</code></pre>
 <p>Emphasize:</p>
 <ul>
 <li>MongoDB is the source of truth for the business state and event intent.</li>
 <li>Debezium is the relay from committed database changes to Kafka.</li>
 <li>Kafka is the fan-out and replay surface.</li>
-<li>The consumer still needs idempotency.</li>
+<li><code>fulfillment-consumer</code> still needs idempotency.</li>
 </ul>
 <p>Transition:</p>
 <p>Before the fix makes sense, we need to agree on the communication tradeoff.</p>
@@ -216,9 +216,12 @@ return producer.Publish(ctx, Event{Type: &quot;order.completed&quot;})</code></p
 <p>In this lab:</p>
 <pre><code class="language-text">checkout.orders
 checkout.outbox_events</code></pre>
-<p>The API writes both:</p>
+<p><code>orders-api</code> writes both:</p>
 <pre><code class="language-text">orders: status = COMPLETED
-outbox_events: type = order.completed</code></pre>
+outbox_events: type = order.completed
+outbox_events: aggregatetype = orders
+outbox_events: aggregateid = order id
+outbox_events: payload.event_id = event id</code></pre>
 <p>Now if the request commits, both the order and event intent exist. If the request rolls back, neither exists.</p>
 <p>Important:</p>
 <p>The outbox does not publish by itself. It stores durable intent. A relay still has to move that intent to Kafka.</p>
@@ -228,8 +231,8 @@ outbox_events: type = order.completed</code></pre>
 <p>Time: 5 minutes.</p>
 <p>Say:</p>
 <p>The request flow changes:</p>
-<pre><code class="language-text">API request -&gt; Go service -&gt; MongoDB transaction -&gt; CDC relay -&gt; Kafka topic</code></pre>
-<p>The Go service owns validation and transaction intent. MongoDB owns the committed truth. Debezium owns observing committed outbox changes and publishing them to Kafka.</p>
+<pre><code class="language-text">API request -&gt; orders-api -&gt; MongoDB transaction -&gt; CDC relay -&gt; Kafka topic</code></pre>
+<p><code>orders-api</code> owns validation and transaction intent. MongoDB owns the committed truth. Debezium owns observing committed outbox changes and publishing them to Kafka.</p>
 <p>This is the strongest sentence on the slide:</p>
 <p>Debezium does not replace the outbox write. Debezium observes the committed outbox document.</p>
 <p>Why that matters:</p>
@@ -245,8 +248,13 @@ outbox_events: type = order.completed</code></pre>
 <p>Then the MongoDB outbox event router transforms the outbox document into an application-level Kafka message.</p>
 <p>Point out the config shape:</p>
 <pre><code class="language-json">&quot;connector.class&quot;: &quot;io.debezium.connector.mongodb.MongoDbConnector&quot;,
+&quot;mongodb.connection.string&quot;: &quot;mongodb://mongo:27017/?replicaSet=rs0&quot;,
+&quot;topic.prefix&quot;: &quot;demo&quot;,
+&quot;database.include.list&quot;: &quot;checkout&quot;,
 &quot;collection.include.list&quot;: &quot;checkout.outbox_events&quot;,
-&quot;transforms.outbox.type&quot;: &quot;io.debezium.connector.mongodb.transforms.outbox.MongoEventRouter&quot;</code></pre>
+&quot;capture.mode&quot;: &quot;change_streams_update_full&quot;,
+&quot;transforms.outbox.type&quot;: &quot;io.debezium.connector.mongodb.transforms.outbox.MongoEventRouter&quot;,
+&quot;transforms.outbox.route.topic.replacement&quot;: &quot;${routedByValue}.events.v1&quot;</code></pre>
 <p>Emphasize:</p>
 <ul>
 <li>Connector offsets let Debezium resume after restart.</li>
@@ -260,7 +268,7 @@ outbox_events: type = order.completed</code></pre>
 <p>Time: 5 minutes.</p>
 <p>Say:</p>
 <p>The pipeline has five responsibilities.</p>
-<p>The Go service writes one transaction. MongoDB commits one source of truth. Debezium captures the outbox change. Kafka receives the event. The consumer processes idempotently.</p>
+<p><code>orders-api</code> writes one transaction. MongoDB commits one source of truth. Debezium captures the outbox change. Kafka receives the event. <code>fulfillment-consumer</code> processes idempotently.</p>
 <p>Explain the boundary:</p>
 <p>Debezium improves the reliability between MongoDB and Kafka because it reads committed changes and tracks offsets. But the consumer side still sees a distributed system. Consumers must be safe during retry, rebalance, replay, and duplicate delivery.</p>
 <p>Practical checks:</p>
@@ -280,17 +288,17 @@ docker compose logs -f fulfillment-consumer</code></pre>
 <p>The demo follows one checkout:</p>
 <ol>
 <li>Send <code>POST /checkouts/{id}/complete</code>.</li>
-<li>The Go API inserts one <code>orders</code> document and one <code>outbox_events</code> document in the same MongoDB transaction.</li>
+<li><code>orders-api</code> inserts one <code>orders</code> document and one <code>outbox_events</code> document in the same MongoDB transaction.</li>
 <li>Debezium captures the committed outbox event.</li>
-<li>Kafka receives the message on <code>marketplace.orders.events.v1</code>.</li>
-<li>The Fulfillment consumer stores the processed event id, then writes a fulfillment record.</li>
+<li>Kafka receives the message on <code>orders.events.v1</code>.</li>
+<li><code>fulfillment-consumer</code> records the processed event id, then writes a fulfillment record.</li>
 </ol>
 <div class="heading-row"><h3 id="start-the-lab">Start The Lab</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
 <p>Run:</p>
 <pre><code class="language-sh">cd demo
 docker compose up --build -d</code></pre>
 <p>Say while it starts:</p>
-<p>This starts MongoDB as a single-node replica set because MongoDB change streams need replica-set behavior. It starts one Confluent Kafka broker in KRaft mode, Debezium Connect, a one-shot connector registration container, the Go API, and the Go consumer.</p>
+<p>This starts MongoDB as a single-node replica set because MongoDB change streams need replica-set behavior. It starts one Confluent Kafka broker in KRaft mode, Debezium Connect, a one-shot connector registration container, <code>orders-api</code>, and <code>fulfillment-consumer</code>.</p>
 <p>Check:</p>
 <pre><code class="language-sh">docker compose ps</code></pre>
 <p>Expected:</p>
@@ -320,15 +328,15 @@ fulfillment-consumer: up</code></pre>
   &quot;checkout_id&quot;: &quot;checkout-demo-001&quot;,
   &quot;order_id&quot;: &quot;...&quot;,
   &quot;outbox_event_id&quot;: &quot;...&quot;,
-  &quot;topic&quot;: &quot;marketplace.orders.events.v1&quot;
+  &quot;topic&quot;: &quot;orders.events.v1&quot;
 }</code></pre>
 <p>Say:</p>
-<p>The API response gives us both IDs. The order id is the aggregate id. The outbox event id is the stable event id used for dedupe.</p>
+<p>The <code>orders-api</code> response gives us both IDs. The order id is the aggregate id. The outbox event id is the stable event id used by <code>fulfillment-consumer</code> for dedupe.</p>
 <div class="heading-row"><h3 id="inspect-mongodb">Inspect MongoDB</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
 <p>Run:</p>
 <pre><code class="language-sh">sh scripts/watch-mongo.sh</code></pre>
 <p>Say:</p>
-<p>Look for Orders state first, then Fulfillment state after the consumer processes the event.</p>
+<p>Look for Orders state first, then Fulfillment state after <code>fulfillment-consumer</code> processes the event.</p>
 <p>Business state:</p>
 <pre><code class="language-text">orders.status = COMPLETED</code></pre>
 <p>Event intent:</p>
@@ -338,9 +346,10 @@ outbox_events.payload.event_id = outbox event id
 outbox_events.payload.event_version = 1</code></pre>
 <p>Fulfillment state:</p>
 <pre><code class="language-text">processed_events._id = outbox event id
-fulfillments.order_id = order id</code></pre>
+fulfillments.order_id = order id
+fulfillments.status = STARTED</code></pre>
 <p>Important:</p>
-<p>The Orders records exist because they committed together. Fulfillment records exist only after Kafka delivery and consumer processing.</p>
+<p>The Orders records exist because they committed together. Fulfillment records exist only after Kafka delivery and <code>fulfillment-consumer</code> processing.</p>
 <div class="heading-row"><h3 id="inspect-kafka">Inspect Kafka</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
 <p>Run:</p>
 <pre><code class="language-sh">sh scripts/watch-kafka.sh</code></pre>
@@ -351,18 +360,18 @@ value contains event_id, event_version, checkout_id, order_id, shop_id, total_am
 <p>Say:</p>
 <p>Debezium converted the MongoDB outbox document into a Kafka event. The key supports per-order ordering. The event id supports dedupe. The topic name is business-facing, not a raw collection name.</p>
 <p>Stop the consumer after one or two messages with <code>Ctrl-C</code>.</p>
-<div class="heading-row"><h3 id="inspect-go-consumer">Inspect Go Consumer</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
+<div class="heading-row"><h3 id="inspect-fulfillment-consumer">Inspect Fulfillment Consumer</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
 <p>Run:</p>
 <pre><code class="language-sh">docker compose logs -f fulfillment-consumer</code></pre>
 <p>Expected:</p>
-<pre><code class="language-text">fulfillment started event_id=... order_id=... topic=marketplace.orders.events.v1 offset=...</code></pre>
+<pre><code class="language-text">fulfillment started event_id=... order_id=... topic=orders.events.v1 offset=...</code></pre>
 <p>Say:</p>
-<p>This is now a real microservice boundary. Orders owns <code>checkout.orders</code> and <code>checkout.outbox_events</code>. Fulfillment owns <code>fulfillment.processed_events</code> and <code>fulfillment.fulfillments</code>. The consumer persists the processed event id before applying its side effect.</p>
+<p>This is now a real microservice boundary. <code>orders-api</code> owns <code>checkout.orders</code> and <code>checkout.outbox_events</code>. <code>fulfillment-consumer</code> owns <code>fulfillment.processed_events</code> and <code>fulfillment.fulfillments</code>. It inserts the processed event id first, then upserts the fulfillment side effect in the same MongoDB transaction.</p>
 <div class="heading-row"><h3 id="produce-a-second-event">Produce A Second Event</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
 <p>Run in another pane:</p>
 <pre><code class="language-sh">sh scripts/create-checkout.sh checkout-demo-002</code></pre>
 <p>Say:</p>
-<p>Watch the consumer log. The API did not publish to Kafka. It only wrote MongoDB. The event still appears because Debezium watches the outbox collection.</p>
+<p>Watch the <code>fulfillment-consumer</code> log. <code>orders-api</code> did not publish to Kafka. It only wrote MongoDB. The event still appears because Debezium watches the outbox collection.</p>
 <div class="heading-row"><h3 id="optional-failure-explanation">Optional Failure Explanation</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
 <p>Do not break the live stack unless there is enough time.</p>
 <p>Say:</p>
@@ -399,7 +408,7 @@ insert processed_event(event_id)
 if duplicate, exit
 apply side effect
 commit local transaction</code></pre>
-<p>In this demo the Fulfillment service uses MongoDB collections for the inbox pattern: <code>processed_events</code> for idempotency and <code>fulfillments</code> for the side effect.</p>
+<p>In this demo <code>fulfillment-consumer</code> uses MongoDB collections for the inbox pattern: <code>processed_events</code> for idempotency and <code>fulfillments</code> for the side effect. A duplicate event id becomes a no-op, while a new event upserts one fulfillment per <code>order_id</code>.</p>
 <div class="heading-row"><h3 id="13-run-lab">13. Run Lab</h3><a class="slide-link" href="index.html#run-lab">Open slide</a></div>
 <p>Time: 2 minutes if already demoed, 8 minutes if not.</p>
 <p>Say:</p>
@@ -409,7 +418,7 @@ commit local transaction</code></pre>
 <li><code>watch-connect.sh</code> monitors Debezium connector state.</li>
 <li><code>watch-kafka.sh</code> monitors messages.</li>
 <li><code>watch-mongo.sh</code> monitors Orders and Fulfillment database state.</li>
-<li><code>docker compose logs -f fulfillment-consumer</code> monitors consumer behavior.</li>
+<li><code>docker compose logs -f fulfillment-consumer</code> monitors Fulfillment consumer behavior.</li>
 </ul>
 <div class="heading-row"><h3 id="14-lessons-learned">14. Lessons Learned</h3><a class="slide-link" href="index.html#lessons-learned">Open slide</a></div>
 <p>Time: 4 minutes.</p>

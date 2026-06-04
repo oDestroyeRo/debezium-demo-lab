@@ -105,5 +105,5 @@ services:
       MONGODB_URI: mongodb://mongo:27017/?replicaSet=rs0
       FULFILLMENT_DATABASE: fulfillment
       KAFKA_BROKERS: broker:29092
-      KAFKA_TOPIC: marketplace.orders.events.v1
+      KAFKA_TOPIC: orders.events.v1
       KAFKA_GROUP_ID: fulfillment-service

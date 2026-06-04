@@ -19,7 +19,7 @@ const (
 	defaultMongoURI = "mongodb://localhost:27017/?replicaSet=rs0"
 	defaultDatabase = "fulfillment"
 	defaultBrokers  = "localhost:9092"
-	defaultTopic    = "marketplace.orders.events.v1"
+	defaultTopic    = "orders.events.v1"
 	defaultGroupID  = "fulfillment-service"
 )
 
